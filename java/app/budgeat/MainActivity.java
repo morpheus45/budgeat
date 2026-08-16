@@ -1,10 +1,15 @@
 package app.budgeat;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -57,6 +62,25 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, String url) {
                 return !url.startsWith("file:///android_asset/");
+            }
+        });
+
+        // La page ne peut se géolocaliser que si Android l'y autorise, et
+        // seulement pour trier les magasins par distance.
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(
+                    String origin, GeolocationPermissions.Callback callback) {
+                boolean accorde = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                    || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                       == PackageManager.PERMISSION_GRANTED;
+                if (accorde) {
+                    callback.invoke(origin, true, false);
+                } else {
+                    callback.invoke(origin, false, false);
+                    requestPermissions(
+                        new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+                }
             }
         });
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);

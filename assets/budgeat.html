@@ -803,7 +803,19 @@ input[type=range]::-moz-range-thumb{
         </div>
 
         <div class="card field">
+          <label>Ton magasin</label>
+          <div id="magActuel" style="font-size:13px;font-weight:700;color:var(--muted)">Aucun magasin choisi.</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn slim soft" style="flex:1" id="magChoisir">Choisir mon magasin</button>
+            <button class="btn slim soft" style="flex:1" id="magPres">Près de moi</button>
+          </div>
+        </div>
+
+        <div class="card field">
           <label>Ton enseigne</label>
+          <div style="font-size:12.5px;color:var(--muted);font-weight:600;margin-top:-2px">
+            Sert au chiffrage des rayons qu'aucun relevé ne couvre.
+          </div>
           <div class="stores" id="storeOpts"></div>
         </div>
 
@@ -1090,6 +1102,17 @@ const OFF_MAP = {
   "Patate douce":    "en:sweet-potatoes"
 };
 const OFF_API = "https://prices.openfoodfacts.org/api/v1/prices";
+const OFF_LIEUX = "https://prices.openfoodfacts.org/api/v1/locations";
+
+/* Pays couverts par la base, du mieux fourni au moins fourni.
+   Sert à nommer les replis quand ton magasin n'a pas relevé un produit. */
+const PAYS = {
+  FR:"France", BE:"Belgique", DE:"Allemagne", ES:"Espagne", IT:"Italie",
+  GB:"Royaume-Uni", NO:"Norvège", SE:"Suède", FI:"Finlande", PL:"Pologne",
+  NL:"Pays-Bas", CH:"Suisse", AT:"Autriche", PT:"Portugal", DK:"Danemark",
+  IE:"Irlande", LU:"Luxembourg", CZ:"Tchéquie", US:"États-Unis"
+};
+const nomPays = c => PAYS[c] || c || "?";
 
 const DAYS = [
   {k:"lun", l:"LUN", n:"Lundi"},
@@ -1126,6 +1149,10 @@ const state = {
   // Promos saisies depuis le catalogue : { ing, pct, store }
   promos:[],
   // Prix relevés en ligne : { "Carottes": {perKg, date, n} }
+  // Magasin favori : un lieu physique, pas seulement une enseigne.
+  // { id, marque, nom, ville, pays, lat, lon, prix }
+  magasin:null,
+  lieux:[],        // catalogue des magasins connus de la base, mis en cache
   // Prix relevés par toi en rayon : { Lidl: { "Poulet fermier": {perKg} } }
   prix:{},
   real:{},
@@ -1323,6 +1350,61 @@ function relevePrices(){
    pas se faire emporter par un relevé aberrant. */
 const mediane = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
 
+/* ============ magasins ============
+   Un prix appartient à un magasin, pas à une enseigne : le Leclerc de Clichy
+   et celui de Montélimar ne pratiquent pas les mêmes tarifs. La base expose
+   6 800 lieux géolocalisés ; on garde ceux qui ont assez de relevés pour
+   servir à quelque chose. */
+const LIEUX_LS = "budgeat.lieux";
+const MAGASIN_LS = "budgeat.magasin";
+
+function sauverMagasin(){
+  try{
+    localStorage.setItem(MAGASIN_LS, JSON.stringify(state.magasin));
+    localStorage.setItem(LIEUX_LS, JSON.stringify({t:Date.now(), l:state.lieux.slice(0, 900)}));
+  }catch(e){}
+}
+function lireMagasin(){
+  try{
+    state.magasin = JSON.parse(localStorage.getItem(MAGASIN_LS) || "null");
+    const c = JSON.parse(localStorage.getItem(LIEUX_LS) || "null");
+    // Un catalogue de magasins vieux d'une semaine reste bon.
+    if(c && c.l && Date.now() - c.t < 7 * 864e5) state.lieux = c.l;
+  }catch(e){}
+}
+
+/* Le catalogue est trié par nombre de relevés : les magasins sans prix ne
+   servent à rien, inutile de descendre plus bas. */
+async function chargerLieux(){
+  if(state.lieux.length) return state.lieux;
+  const out = [];
+  for(let page = 1; page <= 8; page++){
+    const r = await fetch(`${OFF_LIEUX}?size=100&page=${page}&order_by=-price_count`,
+                          {headers:{Accept:"application/json"}});
+    if(!r.ok) break;
+    const j = await r.json();
+    if(!j.items || !j.items.length) break;
+    out.push(...j.items
+      .filter(l => (l.price_count || 0) >= 10 && l.osm_lat != null)
+      .map(l => ({
+        id:l.id, marque:l.osm_brand || l.osm_name || "?", nom:l.osm_name || l.osm_brand || "?",
+        ville:l.osm_address_city || "", pays:l.osm_address_country_code || "",
+        lat:l.osm_lat, lon:l.osm_lon, prix:l.price_count || 0
+      })));
+  }
+  state.lieux = out;
+  sauverMagasin();
+  return out;
+}
+
+/* Distance à vol d'oiseau, suffisante pour trier des magasins. */
+function distanceKm(a, b, c, d){
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (c - a) * r, dLon = (d - b) * r;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a*r) * Math.cos(c*r) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 /* Un relevé norvégien ne dit rien du prix à Grenoble. L'API ignore
    silencieusement tout filtre pays — elle renvoie le même total quoi qu'on
    demande — donc le tri se fait ici, sur le code pays de chaque relevé. */
@@ -1336,36 +1418,80 @@ function memeEnseigne(p, storeName){
   return b === storeName || b.startsWith(storeName) || storeName.startsWith(b);
 }
 
+/* Un prix de l'an dernier n'est pas un prix. On ne retient d'abord que les
+   relevés de moins de trois mois ; si le produit n'en a pas assez, on élargit
+   à un an, mais la ligne est alors marquée comme datée. */
+const FRAIS_JOURS = 90;
+const VIEUX_JOURS = 365;
+const ageJours = p => p.date ? (Date.now() - Date.parse(p.date)) / 864e5 : 1e9;
+const recents = (arr, jours) => arr.filter(p => ageJours(p) <= jours);
+
+/* Garde les relevés frais s'il y en a assez, sinon élargit et le signale. */
+function filtrerFraicheur(arr, mini){
+  const frais = recents(arr, FRAIS_JOURS);
+  if(frais.length >= mini) return {liste:frais, date:false};
+  const larges = recents(arr, VIEUX_JOURS);
+  if(larges.length >= mini) return {liste:larges, date:true};
+  return {liste:[], date:false};
+}
+
+/* Trois niveaux, du plus précis au plus vague, et l'app dit toujours lequel
+   a servi : ton magasin, puis ton enseigne dans ton pays, puis ton pays. */
 async function loadRealPrices(){
   const names = [...new Set(planRecipes().flatMap(r => r.ing.map(x => x[0])))]
     .filter(n => OFF_MAP[n]);
-  if(!names.length) return {ok:0, fail:0, blocked:false, enseigne:0};
+  if(!names.length) return {ok:0, fail:0, blocked:false, magasin:0};
 
-  let ok = 0, fail = 0, blocked = false, enseigne = 0;
+  const mag = state.magasin;
+  const pays = mag ? mag.pays : "FR";
+  const marque = mag ? mag.marque : state.store;
+
+  let ok = 0, fail = 0, blocked = false, parMagasin = 0;
   for(const nm of names){
     try{
-      const url = OFF_API + "?category_tag=" + encodeURIComponent(OFF_MAP[nm]) +
-                  "&currency=EUR&size=100&order_by=-date";
-      const res = await fetch(url, {headers:{Accept:"application/json"}});
-      if(!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
+      const cat = encodeURIComponent(OFF_MAP[nm]);
+      let retenus = [], source = null, datee = false;
 
-      const fr = (data.items || [])
-        .filter(p => p.price_per === "KILOGRAM" && p.price > 0 && estFrancais(p));
-      if(fr.length < 4){ fail++; continue; }
+      // 1. Ton magasin exactement.
+      if(mag){
+        const r1 = await fetch(`${OFF_API}?location_id=${mag.id}&category_tag=${cat}&size=100&order_by=-date`,
+                               {headers:{Accept:"application/json"}});
+        if(r1.ok){
+          const j1 = await r1.json();
+          const kg = (j1.items || []).filter(p => p.price_per === "KILOGRAM" && p.price > 0);
+          const f = filtrerFraicheur(kg, 2);
+          if(f.liste.length){ retenus = f.liste; source = "magasin"; datee = f.date; parMagasin++; }
+        }
+      }
 
-      // Le prix de ton enseigne prime sur la médiane nationale.
-      const chezToi = fr.filter(p => memeEnseigne(p, state.store));
-      const retenus = chezToi.length >= 4 ? chezToi : fr;
-      const source = chezToi.length >= 4 ? "enseigne" : "France";
-      if(source === "enseigne") enseigne++;
+      // 2. Sinon, la même enseigne dans ton pays. 3. Sinon, ton pays.
+      if(!retenus.length){
+        const r2 = await fetch(`${OFF_API}?category_tag=${cat}&size=100&order_by=-date`,
+                               {headers:{Accept:"application/json"}});
+        if(!r2.ok) throw new Error("HTTP " + r2.status);
+        const j2 = await r2.json();
+        const duPays = (j2.items || []).filter(p =>
+          p.price_per === "KILOGRAM" && p.price > 0 &&
+          p.location && p.location.osm_address_country_code === pays);
 
+        const memeMarque = filtrerFraicheur(duPays.filter(p => memeEnseigne(p, marque)), 4);
+        if(memeMarque.liste.length){ retenus = memeMarque.liste; source = "enseigne"; datee = memeMarque.date; }
+        else {
+          const tout = filtrerFraicheur(duPays, 3);
+          if(!tout.liste.length){ fail++; continue; }
+          retenus = tout.liste; source = "pays"; datee = tout.date;
+        }
+      }
+
+      const plusRecent = retenus.map(p => p.date).filter(Boolean).sort().pop() || null;
       state.real[nm] = {
         perKg: mediane(retenus.map(p => p.price)),
         n: retenus.length,
         source,
-        date: retenus.map(p => p.date).filter(Boolean).sort().pop() || null,
-        // Combien de ces relevés étaient des prix promotionnels.
+        pays,
+        datee,                                   // relevés de plus de trois mois
+        jours: Math.round(Math.min(...retenus.map(ageJours))),
+        date: plusRecent,
         promos: retenus.filter(p => p.price_is_discounted).length
       };
       ok++;
@@ -1375,7 +1501,15 @@ async function loadRealPrices(){
       if(e instanceof TypeError) blocked = true;
     }
   }
-  return {ok, fail, blocked, enseigne};
+  return {ok, fail, blocked, magasin:parMagasin};
+}
+
+/* Libellé de provenance affiché sous chaque ligne. */
+function libelleSource(r){
+  if(!r) return "";
+  if(r.source === "magasin") return state.magasin ? state.magasin.marque + " " + (state.magasin.ville || "") : "ton magasin";
+  if(r.source === "enseigne") return (state.magasin ? state.magasin.marque : state.store) + " " + nomPays(r.pays);
+  return nomPays(r.pays);
 }
 
 /* Ce que la MÊME semaine coûterait dans chaque enseigne, avec le budget fixé pour chacune. */
@@ -1645,7 +1779,8 @@ function renderCourses(){
         ? " · ton prix"
         : (it.real && real
             ? " · " + real.perKg.toFixed(2).replace(".", ",") + " €/kg · " + real.n +
-              " relevés " + (real.source === "enseigne" ? state.store : "France")
+              " relevés · " + libelleSource(real) +
+              (real.datee ? " · plus de 3 mois" : real.jours <= 14 ? " · cette quinzaine" : "")
             : " · estimé");
       txt.innerHTML = '<div class="nm">' + it.nm +
         (it.promo ? '<span class="tagpromo">−' + it.promo.pct + ' %</span>' : '') +
@@ -1783,6 +1918,7 @@ function renderProfile(){
     ? "Budget proposé pour " + state.store + ". Chaque enseigne garde le sien."
     : "Budget que tu as fixé pour " + state.store + ".";
 
+  renderMagasin();
   renderCompte();
   renderPromos();
   renderRealPanel();
@@ -1820,6 +1956,102 @@ function renderProfile(){
     al.appendChild(b);
   });
 }
+
+/* ============ choix du magasin ============ */
+function renderMagasin(){
+  const m = state.magasin;
+  $("#magActuel").innerHTML = m
+    ? '<b style="color:var(--ink)">' + m.marque + '</b> · ' + (m.ville || nomPays(m.pays)) +
+      ' <span style="color:var(--faint)">· ' + m.prix + ' prix relevés</span>'
+    : "Aucun magasin choisi : les prix retombent sur la moyenne du pays.";
+}
+
+async function ouvrirChoixMagasin(position){
+  openSheet("Choisis ton magasin",
+    "Les prix sont rattachés à un magasin précis, pas à l'enseigne.", async body => {
+      const rech = el("input");
+      rech.type = "text";
+      rech.placeholder = "Ville ou enseigne…";
+      rech.setAttribute("aria-label", "Rechercher un magasin");
+      body.appendChild(rech);
+
+      const etat = el("div");
+      etat.style.cssText = "font-size:12.5px;font-weight:700;color:var(--muted)";
+      etat.textContent = "Chargement des magasins…";
+      body.appendChild(etat);
+
+      const liste = el("div", "items");
+      body.appendChild(liste);
+
+      let lieux = [];
+      try{
+        lieux = await chargerLieux();
+      }catch(e){
+        etat.textContent = "Impossible de charger les magasins ici. Cette recherche fonctionne dans l'app Android.";
+        return;
+      }
+
+      const dessiner = () => {
+        const q = rech.value.trim().toLowerCase();
+        let sel = lieux;
+        if(q) sel = sel.filter(l =>
+          (l.marque + " " + l.nom + " " + l.ville).toLowerCase().includes(q));
+        if(position){
+          sel = sel.map(l => Object.assign({}, l,
+                  {km: distanceKm(position.lat, position.lon, l.lat, l.lon)}))
+                 .sort((a, b) => a.km - b.km);
+        }
+        const vus = sel.slice(0, 25);
+        etat.textContent = position
+          ? vus.length + " magasins, du plus proche au plus loin"
+          : sel.length + " magasins trouvés · les mieux fournis d'abord";
+
+        liste.textContent = "";
+        vus.forEach(l => {
+          const b = el("button", "item");
+          b.style.width = "100%";
+          b.innerHTML =
+            '<div class="txt"><div class="nm">' + l.marque + '</div>' +
+            '<div class="qt">' + (l.ville || "") + ' · ' + nomPays(l.pays) +
+            ' · ' + l.prix + ' prix' +
+            (l.km != null ? ' · ' + (l.km < 10 ? l.km.toFixed(1) : Math.round(l.km)) + ' km' : '') +
+            '</div></div>';
+          b.addEventListener("click", () => {
+            state.magasin = {id:l.id, marque:l.marque, nom:l.nom, ville:l.ville,
+                             pays:l.pays, lat:l.lat, lon:l.lon, prix:l.prix};
+            // L'enseigne suit le magasin quand elle fait partie de celles qu'on chiffre.
+            const connue = STORES.find(s => l.marque === s.n || l.marque.startsWith(s.n));
+            if(connue) state.store = connue.n;
+            sauverMagasin();
+            state.real = {};
+            closeSheet();
+            renderAll();
+            toast(l.marque + " " + (l.ville || "") + " retenu. Relève les prix pour l'appliquer.");
+          });
+          liste.appendChild(b);
+        });
+      };
+
+      rech.addEventListener("input", dessiner);
+      dessiner();
+    });
+}
+
+$("#magChoisir").addEventListener("click", () => ouvrirChoixMagasin(null));
+
+$("#magPres").addEventListener("click", () => {
+  if(!navigator.geolocation){
+    toast("Ce navigateur ne sait pas te localiser.");
+    ouvrirChoixMagasin(null);
+    return;
+  }
+  toast("Recherche de ta position…");
+  navigator.geolocation.getCurrentPosition(
+    p => ouvrirChoixMagasin({lat:p.coords.latitude, lon:p.coords.longitude}),
+    () => { toast("Position refusée. Cherche par ville."); ouvrirChoixMagasin(null); },
+    {timeout:10000, maximumAge:600000}
+  );
+});
 
 /* ============ correction d'un prix ============
    Aucune base ouverte ne couvre la viande, la crèmerie ni l'épicerie en France.
@@ -1914,6 +2146,7 @@ $("#acctOut").addEventListener("click", () => {
   auth.user = null; auth.token = null; auth.mode = supaPret() ? "supabase" : "local";
   auth.inscription = true;
   lirePrix();
+lireMagasin();
 majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
   const g = $("#gate");
@@ -1943,11 +2176,19 @@ function renderRealPanel(){
     return;
   }
   if(!releves){ $("#realDetail").textContent = "Aucun relevé chargé."; return; }
-  const parEnseigne = Object.values(state.real).filter(r => r.source === "enseigne").length;
+  const v = Object.values(state.real);
+  const parMagasin = v.filter(r => r.source === "magasin").length;
+  const parEnseigne = v.filter(r => r.source === "enseigne").length;
+  const datees = v.filter(r => r.datee).length;
+  const detail = [];
+  if(parMagasin) detail.push(parMagasin + " de ton magasin");
+  if(parEnseigne) detail.push(parEnseigne + " de ton enseigne");
+  const reste = releves - parMagasin - parEnseigne;
+  if(reste) detail.push(reste + " de ton pays");
   $("#realDetail").textContent =
-    releves + " prix relevés en France" +
-    (parEnseigne ? ", dont " + parEnseigne + " chez " + state.store : "") +
-    " · source Open Prices. Viande, poisson, crèmerie et épicerie n'ont aucun relevé : ils restent estimés.";
+    releves + " prix relevés — " + detail.join(", ") +
+    (datees ? " · " + datees + " datent de plus de 3 mois" : " · tous de moins de 3 mois") +
+    ". Viande, poisson, crèmerie et épicerie n'ont aucun relevé : ils restent estimés.";
 }
 
 /* ============ promos ============ */
@@ -2519,6 +2760,7 @@ function ouvrirApp(){
 $("#gSwitch").addEventListener("click", () => {
   auth.inscription = !auth.inscription;
   lirePrix();
+lireMagasin();
 majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
 });
@@ -2605,6 +2847,7 @@ setInterval(clock, 20000);
 /* ============ démarrage ============ */
 state.menu = buildMenu().menu;
 lirePrix();
+lireMagasin();
 majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
 if(lireSession()){ $("#gate").hidden = true; }
