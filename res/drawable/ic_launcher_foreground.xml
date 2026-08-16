@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Marque Budgeat : la liste de courses, et la pièce qui la borne. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:strokeColor="#8FE9BC"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:pathData="M34,40 L74,40 M34,54 L74,54 M34,68 L56,68" />
+
+    <path
+        android:fillColor="#FFD23F"
+        android:pathData="M71,68 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+</vector>

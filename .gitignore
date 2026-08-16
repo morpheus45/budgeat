@@ -1,0 +1,9 @@
+# Sorties de build
+build/
+budgeat.apk
+*.apk.idsig
+
+# Matériel de signature : ne doit jamais être versionné.
+# Chaque poste régénère le sien au premier build.sh
+*.keystore
+*.jks
