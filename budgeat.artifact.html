@@ -383,6 +383,26 @@ input[type=text]{
 }
 input[type=text]::placeholder{color:var(--faint);font-weight:600}
 input[type=text]:focus{outline:none;border-color:var(--green)}
+select{
+  height:46px;border-radius:14px;border:1.5px solid var(--line);background:var(--card);
+  padding:0 10px;font:inherit;font-weight:700;color:var(--ink);min-width:0;flex:1;
+}
+select:focus{outline:none;border-color:var(--green)}
+.promoline{
+  display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);
+}
+.promoline:first-child{border-top:0}
+.promoline .nm{flex:1;min-width:0;font-weight:700;font-size:14px}
+.tagreal{
+  display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:6px;
+  background:var(--mint);color:var(--green-deep);font-size:9.5px;font-weight:800;
+  letter-spacing:.3px;margin-left:6px;vertical-align:1px;
+}
+.tagpromo{
+  display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:6px;
+  background:var(--coral);color:#fff;font-size:9.5px;font-weight:800;
+  letter-spacing:.3px;margin-left:6px;vertical-align:1px;
+}
 
 /* ---------- profil ---------- */
 .field{display:flex;flex-direction:column;gap:9px}
@@ -561,6 +581,15 @@ input[type=range]::-moz-range-thumb{
           Créer mon menu
         </button>
 
+        <div class="card" id="promoHome" hidden style="padding:14px;display:flex;align-items:center;gap:12px">
+          <span style="font-size:28px" aria-hidden="true">🏷️</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:15px" id="promoHomeTitle">2 promos actives</div>
+            <div style="font-size:12px;color:var(--faint);font-weight:700" id="promoHomeSub">déduites de ta liste</div>
+          </div>
+          <button class="btn slim soft" data-goto="profil">Gérer</button>
+        </div>
+
         <h3 class="sec">Ta semaine</h3>
         <div class="weekstrip" id="weekStrip"></div>
 
@@ -670,6 +699,33 @@ input[type=range]::-moz-range-thumb{
           <input type="range" id="budgetRange" min="35" max="110" step="1" value="45" aria-label="Budget de la semaine en euros">
           <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:var(--faint)"><span>35 €</span><span>110 €</span></div>
           <div style="font-size:12.5px;font-weight:700;color:var(--muted)" id="pBudgetNote">Chaque enseigne garde son propre budget.</div>
+        </div>
+
+        <div class="card field">
+          <label>Promos de la semaine</label>
+          <div style="font-size:12.5px;color:var(--muted);font-weight:600;margin-top:-2px">
+            Saisis ce que tu vois dans le catalogue de ton enseigne. Budgeat oriente
+            les menus dessus et déduit la remise de la liste.
+          </div>
+          <div class="addrow">
+            <select id="promoIng" aria-label="Ingrédient en promotion"></select>
+            <select id="promoPct" aria-label="Remise" style="max-width:96px"></select>
+            <button class="btn slim" id="promoAdd" style="height:46px">Ajouter</button>
+          </div>
+          <div id="promoList"></div>
+        </div>
+
+        <div class="card field">
+          <label>Prix relevés en ligne</label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12.5px;color:var(--muted);font-weight:600" id="realNote">
+                Remplace l'estimation par des prix réels sur les fruits et légumes.
+              </div>
+            </div>
+            <button class="opt" id="realToggle" type="button" aria-pressed="false" style="width:92px;flex:none">Activer</button>
+          </div>
+          <div id="realDetail" style="font-size:12px;color:var(--faint);font-weight:700"></div>
         </div>
 
         <div class="card field">
@@ -914,6 +970,23 @@ const ALLERGENS = [
 ];
 const FOYERS = [{v:1,l:"1 personne"},{v:2,l:"2 personnes"},{v:4,l:"4 personnes"},{v:6,l:"6 personnes"}];
 
+/* Ingrédients pour lesquels Open Prices a réellement des relevés au kilo.
+   Vérifié le 17 août 2026 : chacun a au moins 8 prix au kilo en euros.
+   Salade, riz, lentilles, œufs et beurre en sont absents ou vendus à la pièce —
+   ils restent donc estimés, et l'app le dit. */
+const OFF_MAP = {
+  "Pommes de terre": "en:potatoes",
+  "Carottes":        "en:carrots",
+  "Oignons":         "en:onions",
+  "Tomates":         "en:tomatoes",
+  "Courgette":       "en:zucchini",
+  "Brocolis":        "en:broccoli",
+  "Citrons":         "en:lemons",
+  "Champignons":     "en:mushrooms",
+  "Patate douce":    "en:sweet-potatoes"
+};
+const OFF_API = "https://prices.openfoodfacts.org/api/v1/prices";
+
 const DAYS = [
   {k:"lun", l:"LUN", n:"Lundi"},
   {k:"mar", l:"MAR", n:"Mardi"},
@@ -946,6 +1019,11 @@ const state = {
   allerg:new Set(),
   // Quels repas planifier, jour par jour : { lun:{midi:false,soir:true}, … }
   slots:{},
+  // Promos saisies depuis le catalogue : { ing, pct, store }
+  promos:[],
+  // Prix relevés en ligne : { "Carottes": {perKg, date, n} }
+  real:{},
+  realOn:false,
   // Le plan : une entrée par repas coché → { day:"lun", meal:"soir", r:recette }
   menu:[],
   checked:new Set(),
@@ -987,18 +1065,48 @@ const eur = v => v.toFixed(2).replace(".", ",") + " €";
 const scale = () => state.foyer / 4;
 const storeBy = n => STORES.find(s => s.n === n) || STORES[8];
 
-/* Prix d'un ingrédient chez une enseigne donnée :
-   niveau général × profil du rayon × dernier relevé × taille du foyer. */
-function priceAt(storeName, base, rayon, ingName){
+/* Convertit « 800 g », « 1,3 kg » en kilos. Renvoie null pour « 2 pièces »,
+   qu'aucun prix au kilo ne permet de chiffrer. */
+function qtyToKg(qty){
+  const m = String(qty).replace(",", ".").match(/^([\d.]+)\s*(kg|g)\b/i);
+  if(!m) return null;
+  const v = parseFloat(m[1]);
+  return m[2].toLowerCase() === "kg" ? v : v / 1000;
+}
+
+/* Promo active sur un ingrédient, dans une enseigne donnée. */
+function promoFor(ingName, storeName){
+  return state.promos.find(p => p.ing === ingName && p.store === storeName) || null;
+}
+
+/* Prix d'un ingrédient chez une enseigne donnée.
+   Base : le relevé en ligne quand il existe (médiane nationale au kilo),
+   sinon l'estimation du catalogue. Puis le profil de l'enseigne, le dernier
+   relevé de prix, le foyer, et enfin la promo. */
+function priceAt(storeName, base, rayon, ingName, qty){
   const s = storeBy(storeName);
   const dev = s.r[RAYON_ORDER.indexOf(rayon)] ?? 1;
   const drift = (state.drift[storeName] || {})[ingName] ?? 1;
-  return base * s.i * dev * drift * scale();
+
+  let ref = base;
+  const real = state.realOn ? state.real[ingName] : null;
+  const kg = real ? qtyToKg(qty) : null;
+  if(real && kg) ref = real.perKg * kg;
+
+  let p = ref * s.i * dev * drift * scale();
+  const promo = promoFor(ingName, storeName);
+  if(promo) p = p * (1 - promo.pct / 100);
+  return p;
 }
-const unitPrice = (base, rayon, ingName) => priceAt(state.store, base, rayon, ingName);
+const unitPrice = (base, rayon, ingName, qty) => priceAt(state.store, base, rayon, ingName, qty);
+
+/* Ce prix vient-il d'un relevé en ligne ? */
+function isRealPriced(ingName, qty){
+  return !!(state.realOn && state.real[ingName] && qtyToKg(qty));
+}
 
 function recipeCostAt(storeName, r){
-  return r.ing.reduce((a, x) => a + priceAt(storeName, x[3], x[1], x[0]), 0);
+  return r.ing.reduce((a, x) => a + priceAt(storeName, x[3], x[1], x[0], x[2]), 0);
 }
 const recipeCost = r => recipeCostAt(state.store, r);
 function menuTotal(){
@@ -1050,6 +1158,45 @@ function relevePrices(){
   return movers;
 }
 
+/* ============ prix relevés en ligne (Open Prices) ============
+   Base ouverte et collaborative d'Open Food Facts : des gens photographient des
+   étiquettes en magasin. La couverture est bonne sur les fruits et légumes,
+   quasi nulle sur la viande et le poisson — d'où OFF_MAP, restreint à ce qui
+   tient debout. On prend la médiane des prix au kilo, pas la moyenne, pour ne
+   pas se faire emporter par un relevé aberrant. */
+async function loadRealPrices(){
+  const names = [...new Set(planRecipes().flatMap(r => r.ing.map(x => x[0])))]
+    .filter(n => OFF_MAP[n]);
+  if(!names.length) return {ok:0, fail:0, blocked:false};
+
+  let ok = 0, fail = 0, blocked = false;
+  for(const nm of names){
+    try{
+      const url = OFF_API + "?category_tag=" + encodeURIComponent(OFF_MAP[nm]) +
+                  "&currency=EUR&size=25&order_by=-date";
+      const res = await fetch(url, {headers:{Accept:"application/json"}});
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const kgPrices = (data.items || [])
+        .filter(p => p.price_per === "KILOGRAM" && p.price > 0)
+        .map(p => ({v:p.price, d:p.date}));
+      if(kgPrices.length < 4){ fail++; continue; }
+      const sorted = kgPrices.map(p => p.v).sort((a, b) => a - b);
+      state.real[nm] = {
+        perKg: sorted[Math.floor(sorted.length / 2)],
+        n: sorted.length,
+        date: kgPrices.map(p => p.d).filter(Boolean).sort().pop() || null
+      };
+      ok++;
+    }catch(e){
+      fail++;
+      // Un artifact publié interdit toute requête sortante : inutile d'insister.
+      if(e instanceof TypeError) blocked = true;
+    }
+  }
+  return {ok, fail, blocked};
+}
+
 /* Ce que la MÊME semaine coûterait dans chaque enseigne, avec le budget fixé pour chacune. */
 const weekAt = name => planRecipes().reduce((a, r) => a + recipeCostAt(name, r), 0);
 function compareStores(){
@@ -1093,7 +1240,9 @@ function buildMenu(){
   slots.forEach(slot => {
     const wanted = slot.meal === "midi" && midiPool.length >= 2 ? midiPool : pool;
     // On évite de répéter un plat, et de servir trois fois la même famille.
+    const enPromo = r => r.ing.some(x => promoFor(x[0], state.store));
     let choice =
+      shuffle(wanted).find(r => enPromo(r) && !used.includes(r) && (tagCount[r.tag] || 0) < 2) ||
       shuffle(wanted).find(r => !used.includes(r) && (tagCount[r.tag] || 0) < 2) ||
       shuffle(wanted).find(r => !used.includes(r)) ||
       shuffle(wanted)[0];
@@ -1129,11 +1278,11 @@ function shoppingList(){
       const key = nm + "|" + rayon;
       if(map.has(key)){
         const it = map.get(key);
-        it.price += unitPrice(price, rayon, nm);
+        it.price += unitPrice(price, rayon, nm, qty);
         it.times += 1;
         it.qty = it.times + " × " + qty;
       } else {
-        map.set(key, {nm, rayon, qty, times:1, price: unitPrice(price, rayon, nm)});
+        map.set(key, {nm, rayon, qty, times:1, price: unitPrice(price, rayon, nm, qty), real: isRealPriced(nm, qty), promo: promoFor(nm, state.store)});
       }
     });
   });
@@ -1198,6 +1347,15 @@ function renderHome(){
   const cut = Math.round((1 - spend / baseline) * 100);
   $("#stCut").textContent = (cut >= 0 ? "−" : "+") + Math.abs(cut) + " %";
   $("#hSaved").textContent = Math.round(Math.max(0, baseline - spend) * state.weeks) + " €";
+
+  const mesPromos = state.promos.filter(p => p.store === state.store);
+  const gain = economiesPromos();
+  $("#promoHome").hidden = !mesPromos.length;
+  if(mesPromos.length){
+    $("#promoHomeTitle").textContent = mesPromos.length +
+      (mesPromos.length > 1 ? " promos actives" : " promo active") + " chez " + state.store;
+    $("#promoHomeSub").textContent = "−" + eur(gain) + " sur ta liste";
+  }
 
   $("#slInit").textContent = state.store[0];
   $("#slName").textContent = state.store;
@@ -1301,8 +1459,14 @@ function renderCourses(){
       }
 
       const txt = el("div", "txt");
-      txt.innerHTML = '<div class="nm">' + it.nm + '</div><div class="qt">' + it.qty +
-        (it.owned ? " · déjà au placard" : "") + '</div>';
+      const real = state.realOn && state.real[it.nm] ? state.real[it.nm] : null;
+      txt.innerHTML = '<div class="nm">' + it.nm +
+        (it.promo ? '<span class="tagpromo">−' + it.promo.pct + ' %</span>' : '') +
+        (it.real ? '<span class="tagreal">RELEVÉ</span>' : '') +
+        '</div><div class="qt">' + it.qty +
+        (it.owned ? " · déjà au placard" : "") +
+        (it.real && real ? " · " + real.perKg.toFixed(2).replace(".", ",") + " €/kg sur " + real.n + " relevés" : "") +
+        '</div>';
 
       const pr = el("div", "pr tnum");
       pr.textContent = it.owned ? "0,00 €" : eur(it.price);
@@ -1428,6 +1592,8 @@ function renderProfile(){
     ? "Budget proposé pour " + state.store + ". Chaque enseigne garde le sien."
     : "Budget que tu as fixé pour " + state.store + ".";
 
+  renderPromos();
+  renderRealPanel();
   renderMealGrid();
 
   buildOptions($("#foyerOpts"), FOYERS.map(f => ({k:String(f.v), l:f.l})), String(state.foyer), k => {
@@ -1460,6 +1626,106 @@ function renderProfile(){
     al.appendChild(b);
   });
 }
+
+/* ============ prix relevés : panneau ============ */
+function renderRealPanel(){
+  const b = $("#realToggle");
+  b.setAttribute("aria-pressed", String(state.realOn));
+  b.textContent = state.realOn ? "Activé" : "Activer";
+
+  const releves = Object.keys(state.real).length;
+  const dispo = [...new Set(planRecipes().flatMap(r => r.ing.map(x => x[0])))]
+    .filter(n => OFF_MAP[n]).length;
+
+  $("#realNote").textContent = state.realOn
+    ? "Prix réels appliqués aux fruits et légumes de ta semaine."
+    : "Remplace l'estimation par des prix réels sur les fruits et légumes.";
+
+  if(!state.realOn){
+    $("#realDetail").textContent = dispo
+      ? dispo + (dispo > 1 ? " ingrédients de ta semaine sont couverts." : " ingrédient de ta semaine est couvert.")
+      : "Aucun ingrédient de ta semaine n'est couvert par la base.";
+    return;
+  }
+  $("#realDetail").textContent = releves
+    ? releves + " prix relevés · source Open Prices (Open Food Facts) · viande et poisson restent estimés"
+    : "Aucun relevé chargé.";
+}
+
+/* ============ promos ============ */
+function renderPromos(){
+  // On ne propose que des ingrédients réellement présents dans la semaine.
+  const dispo = [...new Set(planRecipes().flatMap(r => r.ing.map(x => x[0])))].sort();
+  const sel = $("#promoIng");
+  const garde = sel.value;
+  sel.textContent = "";
+  dispo.forEach(nm => {
+    const o = el("option");
+    o.value = nm; o.textContent = nm;
+    sel.appendChild(o);
+  });
+  if(dispo.includes(garde)) sel.value = garde;
+
+  const pct = $("#promoPct");
+  if(!pct.options.length){
+    [10, 15, 20, 25, 30, 40, 50].forEach(v => {
+      const o = el("option");
+      o.value = String(v); o.textContent = "−" + v + " %";
+      pct.appendChild(o);
+    });
+    pct.value = "25";
+  }
+
+  const host = $("#promoList");
+  host.textContent = "";
+  const mine = state.promos.filter(p => p.store === state.store);
+  if(!mine.length){
+    const p = el("div");
+    p.style.cssText = "font-size:12.5px;font-weight:700;color:var(--faint);padding-top:8px";
+    p.textContent = "Aucune promo saisie pour " + state.store + ".";
+    host.appendChild(p);
+    return;
+  }
+  mine.forEach(promo => {
+    const line = el("div", "promoline");
+    const gain = economiePromo(promo);
+    line.innerHTML =
+      '<span class="pill coral">−' + promo.pct + ' %</span>' +
+      '<span class="nm">' + promo.ing + '</span>' +
+      '<span class="tnum" style="font-weight:800;font-size:13px;color:var(--green-ink)">−' +
+        eur(gain) + '</span>';
+    const del = el("button", "stash");
+    del.setAttribute("aria-label", "Retirer la promo sur " + promo.ing);
+    del.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    del.addEventListener("click", () => {
+      state.promos = state.promos.filter(p => p !== promo);
+      renderAll();
+      toast("Promo retirée sur " + promo.ing + ".");
+    });
+    line.appendChild(del);
+    host.appendChild(line);
+  });
+}
+
+/* Ce que la promo fait gagner sur la semaine, au prix courant. */
+function economiePromo(promo){
+  let plein = 0;
+  planRecipes().forEach(r => r.ing.forEach(x => {
+    if(x[0] !== promo.ing) return;
+    const s = storeBy(promo.store);
+    const dev = s.r[RAYON_ORDER.indexOf(x[1])] ?? 1;
+    const drift = (state.drift[promo.store] || {})[x[0]] ?? 1;
+    let ref = x[3];
+    const real = state.realOn ? state.real[x[0]] : null;
+    const kg = real ? qtyToKg(x[2]) : null;
+    if(real && kg) ref = real.perKg * kg;
+    plein += ref * s.i * dev * drift * scale();
+  }));
+  return plein * (promo.pct / 100);
+}
+const economiesPromos = () =>
+  state.promos.filter(p => p.store === state.store)
+              .reduce((a, p) => a + economiePromo(p), 0);
 
 /* Quels repas planifier : quatre combinaisons courantes, puis le détail case par case. */
 function renderMealGrid(){
@@ -1807,6 +2073,49 @@ $("#themeBtn").addEventListener("click", () => {
     : window.matchMedia("(prefers-color-scheme: dark)").matches;
   document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
   toast(dark ? "Thème clair" : "Thème sombre");
+});
+
+/* ============ promos : saisie ============ */
+$("#promoAdd").addEventListener("click", () => {
+  const ing = $("#promoIng").value;
+  const pct = Number($("#promoPct").value);
+  if(!ing) return;
+  const dejaLa = state.promos.find(p => p.ing === ing && p.store === state.store);
+  if(dejaLa){ dejaLa.pct = pct; }
+  else { state.promos.push({ing, pct, store:state.store}); }
+  renderAll();
+  toast("−" + pct + " % sur " + ing + " chez " + state.store + ".");
+});
+
+/* ============ prix relevés : activation ============ */
+$("#realToggle").addEventListener("click", async () => {
+  if(state.realOn){
+    state.realOn = false;
+    state.real = {};
+    renderAll();
+    toast("Retour aux prix estimés.");
+    return;
+  }
+  const b = $("#realToggle");
+  b.disabled = true;
+  b.textContent = "…";
+  toast("Interrogation d'Open Prices…");
+
+  state.realOn = true;
+  const res = await loadRealPrices();
+  b.disabled = false;
+
+  if(res.blocked || (!res.ok && res.fail)){
+    state.realOn = false;
+    state.real = {};
+    renderAll();
+    toast(res.blocked
+      ? "Le web ne peut pas interroger les prix ici. Cette fonction marche dans l'app Android."
+      : "Aucun prix récupéré.");
+    return;
+  }
+  renderAll();
+  toast(res.ok + (res.ok > 1 ? " prix relevés appliqués." : " prix relevé appliqué."));
 });
 
 /* ============ app installée ============ */
