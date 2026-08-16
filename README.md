@@ -49,6 +49,25 @@ n'a pas vocation à être publié sur un store.
 signature. Un clone du dépôt en régénère un au premier build, et produira donc un
 APK que ton téléphone verra comme une app différente.
 
+## D'où viennent les prix
+
+Deux origines, jamais confondues à l'écran.
+
+**Mesuré.** Neuf catégories de fruits et légumes ont assez de relevés dans
+Open Prices (Open Food Facts) pour être chiffrées pour de vrai. L'app prend la
+médiane des prix au kilo, en ne gardant que les relevés **français** — l'API
+ignore silencieusement tout filtre pays, donc le tri se fait côté client sur
+`osm_address_country_code`. Sans ça, un relevé norvégien pollue la médiane.
+
+Quand l'enseigne choisie a au moins quatre relevés, c'est son prix à elle qui
+s'applique, et le profil de l'enseigne n'est alors **pas** réappliqué : ce serait
+compter deux fois.
+
+**Estimé.** Viande, poisson, crèmerie, épicerie, pain et surgelés n'ont
+essentiellement aucun relevé en France. Leurs prix sont des estimations de
+détail, recalibrées le 17 août 2026. Elles restent des estimations et peuvent
+être fausses ; chaque ligne concernée porte la mention « estimé ».
+
 ## Mise à jour depuis GitHub
 
 Depuis la 1.3, l'app interroge elle-même
