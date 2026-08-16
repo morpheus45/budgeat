@@ -49,6 +49,25 @@ n'a pas vocation à être publié sur un store.
 signature. Un clone du dépôt en régénère un au premier build, et produira donc un
 APK que ton téléphone verra comme une app différente.
 
+## Mise à jour depuis GitHub
+
+Depuis la 1.3, l'app interroge elle-même
+`api.github.com/repos/morpheus45/budgeat/releases/latest` au lancement, et propose
+la nouvelle version si le tag est supérieur au `versionName` installé. Le
+téléchargement passe par `DownloadManager`, qui fournit une URI `content://`
+directement utilisable par l'installateur — d'où l'absence de `FileProvider`.
+
+Publier une release suffit donc à diffuser la mise à jour : il n'y a plus de
+fichier à transmettre.
+
+Deux permissions en découlent : `INTERNET` et `REQUEST_INSTALL_PACKAGES`. Android
+demandera en plus l'accord explicite « autoriser depuis cette source » au premier
+téléchargement.
+
+L'installation par-dessus l'existant n'est possible que si la nouvelle version
+porte la même signature — c'est Android qui le vérifie. D'où l'importance du
+keystore stable dans les secrets du dépôt.
+
 ## Publier une version
 
 L'APK distribué est construit par le CI, pas sur un poste :

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -15,12 +16,31 @@ import android.webkit.WebViewClient;
 public class MainActivity extends Activity {
 
     private WebView web;
+    private Updater updater;
+
+    /**
+     * Pont exposé à la page. Elle est un asset local et toute navigation externe est
+     * bloquée : aucun contenu tiers ne peut atteindre ces méthodes.
+     */
+    private class Pont {
+        @JavascriptInterface
+        public String version() {
+            return updater.versionInstallee();
+        }
+
+        @JavascriptInterface
+        public void chercherMiseAJour() {
+            updater.check(false);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
 
+        updater = new Updater(this);
         web = new WebView(this);
+        web.addJavascriptInterface(new Pont(), "BudgeatApp");
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -49,6 +69,10 @@ public class MainActivity extends Activity {
             web.restoreState(saved);
         } else {
             web.loadUrl("file:///android_asset/budgeat.html");
+            // Contrôle discret au lancement : on ne parle que s'il y a du neuf.
+            web.postDelayed(new Runnable() {
+                @Override public void run() { updater.check(true); }
+            }, 2500);
         }
     }
 
@@ -83,6 +107,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (updater != null) updater.detacher();
         if (web != null) {
             web.destroy();
             web = null;

@@ -725,6 +725,18 @@ input[type=range]::-moz-range-thumb{
         </div>
 
         <button class="btn" id="applyProfile">Appliquer et regénérer</button>
+
+        <!-- Visible uniquement dans l'app installée : le navigateur n'a pas de pont natif. -->
+        <div class="card field" id="appCard" hidden>
+          <label>Application</label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:800;font-size:15px">Budgeat <span id="appVersion">—</span></div>
+              <div style="font-size:12px;color:var(--faint);font-weight:700">Mises à jour publiées sur GitHub</div>
+            </div>
+            <button class="btn slim soft" id="checkUpdate">Vérifier</button>
+          </div>
+        </div>
       </section>
 
     </main>
@@ -1821,6 +1833,19 @@ $("#themeBtn").addEventListener("click", () => {
   document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
   toast(dark ? "Thème clair" : "Thème sombre");
 });
+
+/* ============ app installée ============ */
+// Le pont n'existe que dans l'APK ; dans un navigateur, la carte reste cachée.
+if(window.BudgeatApp){
+  try{
+    $("#appVersion").textContent = window.BudgeatApp.version();
+    $("#appCard").hidden = false;
+    $("#checkUpdate").addEventListener("click", () => {
+      toast("Recherche d'une mise à jour…");
+      window.BudgeatApp.chercherMiseAJour();
+    });
+  }catch(e){ /* pont indisponible : on reste en mode navigateur */ }
+}
 
 /* ============ horloge ============ */
 function clock(){
