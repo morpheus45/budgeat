@@ -52,8 +52,12 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'budgeat' }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'budgeat' }}
           VERSION_CODE: ${{ github.run_number }}
-          VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('ci-{0}', github.run_number) }}
-        run: bash build.sh
+          RAW_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('ci-{0}', github.run_number) }}
+        run: |
+          # Le tag s'écrit v1.1, mais le versionName d'une app s'écrit 1.1.
+          export VERSION_NAME="${RAW_VERSION#v}"
+          echo "versionName=$VERSION_NAME  versionCode=$VERSION_CODE"
+          bash build.sh
 
       - name: Vérifier la signature et le contenu
         run: |

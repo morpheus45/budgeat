@@ -49,6 +49,25 @@ n'a pas vocation à être publié sur un store.
 signature. Un clone du dépôt en régénère un au premier build, et produira donc un
 APK que ton téléphone verra comme une app différente.
 
+## Publier une version
+
+L'APK distribué est construit par le CI, pas sur un poste :
+
+```
+git tag v1.2 && git push origin v1.2
+```
+
+Le workflow `build-apk.yml` construit, signe avec la clé des secrets du dépôt,
+vérifie la signature et la présence de l'asset d'interface, refuse tout APK
+compilé contre un SDK de préversion, puis attache le fichier à la release.
+
+Un `workflow_dispatch` sans tag produit un build de contrôle, téléchargeable en
+artefact de run.
+
+Secrets attendus : `KEYSTORE_BASE64` (le keystore encodé en base64),
+`KEYSTORE_PASSWORD`, `KEY_ALIAS`. Sans eux le CI signe avec une clé jetable et
+émet un avertissement.
+
 Garder le même keystore pour toutes les mises à jour : Android refuse d'installer
 par-dessus une app signée par une autre clé.
 
