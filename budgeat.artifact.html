@@ -394,6 +394,21 @@ input[type=text]:focus{outline:none;border-color:var(--green)}
   font-size:13.5px;font-weight:800;color:var(--muted);
 }
 .opt[aria-pressed="true"]{background:var(--mint);color:var(--green-deep);box-shadow:inset 0 0 0 2px var(--green)}
+/* Grille des repas : une ligne par jour, une case Midi et une case Soir. */
+.mealgrid{display:flex;flex-direction:column;gap:6px}
+.mealrowsel{display:grid;grid-template-columns:44px 1fr 1fr;gap:6px;align-items:center}
+.mealrowsel > .dname{font-size:12px;font-weight:800;color:var(--faint);letter-spacing:.5px}
+.slot{
+  height:38px;border-radius:12px;background:var(--card);
+  box-shadow:inset 0 0 0 1.5px var(--line);
+  font-size:12.5px;font-weight:800;color:var(--faint);
+  display:flex;align-items:center;justify-content:center;gap:5px;
+}
+.slot[aria-pressed="true"]{background:var(--mint);color:var(--green-deep);box-shadow:inset 0 0 0 2px var(--green)}
+.slot .tick{width:14px;height:14px;opacity:0;transition:opacity .12s}
+.slot[aria-pressed="true"] .tick{opacity:1}
+.slot .tick svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+
 .stores{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .store{
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
@@ -550,7 +565,7 @@ input[type=range]::-moz-range-thumb{
         <div class="weekstrip" id="weekStrip"></div>
 
         <div class="stats">
-          <div class="stat"><b id="stPers">2,41 €</b><span>le dîner par personne</span></div>
+          <div class="stat"><b id="stPers">2,41 €</b><span>le repas par personne</span></div>
           <div class="stat"><b id="stCut">−34 %</b><span>sur ton ticket</span></div>
           <div class="stat"><b>2 h</b><span>gagnées par semaine</span></div>
         </div>
@@ -658,6 +673,13 @@ input[type=range]::-moz-range-thumb{
         </div>
 
         <div class="card field">
+          <label>Les repas à planifier</label>
+          <div class="grid2" id="presetOpts"></div>
+          <div class="mealgrid" id="mealGrid"></div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--muted)" id="slotNote">5 repas dans la semaine</div>
+        </div>
+
+        <div class="card field">
           <label>Ton foyer</label>
           <div class="grid2" id="foyerOpts"></div>
         </div>
@@ -723,7 +745,7 @@ const R = {FL:"Fruits & légumes", BO:"Boucherie", PO:"Poissonnerie", CR:"Crème
 const RAYON_ORDER = [R.FL, R.BO, R.PO, R.CR, R.PA, R.ES, R.SU];
 
 const RECIPES = [
-  {id:"dhal", n:"Dhal de lentilles corail", e:"🥣", tag:"vegan", al:[], ing:[
+  {id:"dhal", express:true, n:"Dhal de lentilles corail", e:"🥣", tag:"vegan", al:[], ing:[
     ["Lentilles corail", R.ES, "400 g", 2.10],
     ["Lait de coco", R.ES, "400 ml", 1.40],
     ["Riz basmati", R.ES, "300 g", 1.60],
@@ -731,7 +753,7 @@ const RECIPES = [
     ["Tomates concassées", R.ES, "400 g", 0.95],
     ["Ail & épices curry", R.FL, "1 lot", 0.60]]},
 
-  {id:"soupe", n:"Soupe de légumes & croque au fromage", e:"🥪", tag:"vege", al:["gluten","lactose"], ing:[
+  {id:"soupe", express:true, n:"Soupe de légumes & croque au fromage", e:"🥪", tag:"vege", al:["gluten","lactose"], ing:[
     ["Poireaux", R.FL, "3 pièces", 1.80],
     ["Carottes", R.FL, "500 g", 0.90],
     ["Pommes de terre", R.FL, "600 g", 1.10],
@@ -739,7 +761,7 @@ const RECIPES = [
     ["Emmental râpé", R.CR, "200 g", 1.90],
     ["Tomates", R.FL, "3 pièces", 0.80]]},
 
-  {id:"omelette", n:"Omelette, pommes de terre & salade", e:"🍳", tag:"vege", al:["oeuf","lactose"], ing:[
+  {id:"omelette", express:true, n:"Omelette, pommes de terre & salade", e:"🍳", tag:"vege", al:["oeuf","lactose"], ing:[
     ["Œufs", R.CR, "12 pièces", 3.20],
     ["Pommes de terre", R.FL, "800 g", 1.40],
     ["Salade verte", R.FL, "1 pièce", 1.10],
@@ -747,7 +769,7 @@ const RECIPES = [
     ["Crème fraîche", R.CR, "20 cl", 1.10],
     ["Huile & vinaigre", R.ES, "1 lot", 0.60]]},
 
-  {id:"onepot", n:"One-pot crémeux tomates", e:"🍝", tag:"vege", al:["gluten","lactose"], ing:[
+  {id:"onepot", express:true, n:"One-pot crémeux tomates", e:"🍝", tag:"vege", al:["gluten","lactose"], ing:[
     ["Pâtes penne", R.ES, "500 g", 1.20],
     ["Tomates cerises", R.FL, "500 g", 2.40],
     ["Crème fraîche", R.CR, "20 cl", 1.10],
@@ -755,7 +777,7 @@ const RECIPES = [
     ["Parmesan", R.CR, "100 g", 2.30],
     ["Basilic & ail", R.FL, "1 lot", 1.00]]},
 
-  {id:"chili", n:"Chili sin carne", e:"🌶️", tag:"vegan", al:[], ing:[
+  {id:"chili", express:true, n:"Chili sin carne", e:"🌶️", tag:"vegan", al:[], ing:[
     ["Haricots rouges", R.ES, "800 g", 2.20],
     ["Tomates concassées", R.ES, "800 g", 1.90],
     ["Poivrons", R.FL, "2 pièces", 2.10],
@@ -763,7 +785,7 @@ const RECIPES = [
     ["Riz", R.ES, "300 g", 1.60],
     ["Maïs", R.ES, "300 g", 1.10]]},
 
-  {id:"curry", n:"Curry coco pois chiches", e:"🍛", tag:"vegan", al:[], ing:[
+  {id:"curry", express:true, n:"Curry coco pois chiches", e:"🍛", tag:"vegan", al:[], ing:[
     ["Pois chiches", R.ES, "800 g", 2.30],
     ["Lait de coco", R.ES, "400 ml", 1.40],
     ["Épinards", R.SU, "450 g", 1.80],
@@ -787,7 +809,7 @@ const RECIPES = [
     ["Tomates concassées", R.ES, "400 g", 0.95],
     ["Oignons", R.FL, "2 pièces", 0.50]]},
 
-  {id:"cantonais", n:"Riz cantonais maison", e:"🍚", tag:"viande", al:["oeuf","soja"], ing:[
+  {id:"cantonais", express:true, n:"Riz cantonais maison", e:"🍚", tag:"viande", al:["oeuf","soja"], ing:[
     ["Riz", R.ES, "400 g", 2.10],
     ["Jambon blanc", R.BO, "4 tranches", 2.20],
     ["Œufs", R.CR, "6 pièces", 1.70],
@@ -795,7 +817,7 @@ const RECIPES = [
     ["Oignons nouveaux", R.FL, "1 botte", 1.20],
     ["Sauce soja", R.ES, "1 flacon", 1.60]]},
 
-  {id:"tacos", n:"Tacos express", e:"🌮", tag:"viande", al:["gluten","lactose"], ing:[
+  {id:"tacos", express:true, n:"Tacos express", e:"🌮", tag:"viande", al:["gluten","lactose"], ing:[
     ["Galettes de blé", R.PA, "8 pièces", 2.10],
     ["Viande hachée", R.BO, "500 g", 5.40],
     ["Cheddar", R.CR, "150 g", 2.10],
@@ -817,7 +839,7 @@ const RECIPES = [
     ["Chapelure & œuf", R.ES, "1 lot", 1.30],
     ["Haricots verts", R.SU, "500 g", 2.10]]},
 
-  {id:"saumon", n:"Saumon, riz & brocolis", e:"🐟", tag:"poisson", al:["poisson"], ing:[
+  {id:"saumon", express:true, n:"Saumon, riz & brocolis", e:"🐟", tag:"poisson", al:["poisson"], ing:[
     ["Pavés de saumon", R.PO, "4 pièces", 10.80],
     ["Riz", R.ES, "300 g", 1.60],
     ["Brocolis", R.FL, "700 g", 2.60],
@@ -829,21 +851,21 @@ const RECIPES = [
     ["Beurre", R.CR, "100 g", 1.60],
     ["Épinards", R.SU, "450 g", 1.80]]},
 
-  {id:"wok", n:"Wok de nouilles & légumes croquants", e:"🍜", tag:"vegan", al:["gluten","soja"], ing:[
+  {id:"wok", express:true, n:"Wok de nouilles & légumes croquants", e:"🍜", tag:"vegan", al:["gluten","soja"], ing:[
     ["Nouilles chinoises", R.ES, "400 g", 1.90],
     ["Carottes", R.FL, "400 g", 0.75],
     ["Poivrons", R.FL, "2 pièces", 2.10],
     ["Brocolis", R.FL, "400 g", 1.50],
     ["Sauce soja & gingembre", R.ES, "1 lot", 1.70]]},
 
-  {id:"bowl", n:"Buddha bowl quinoa & pois chiches rôtis", e:"🥗", tag:"vegan", al:[], ing:[
+  {id:"bowl", express:true, n:"Buddha bowl quinoa & pois chiches rôtis", e:"🥗", tag:"vegan", al:[], ing:[
     ["Quinoa", R.ES, "300 g", 3.20],
     ["Pois chiches", R.ES, "400 g", 1.20],
     ["Patate douce", R.FL, "600 g", 1.90],
     ["Salade & tomates", R.FL, "1 lot", 1.90],
     ["Tahin & citron", R.ES, "1 lot", 1.80]]},
 
-  {id:"thai", n:"Soupe thaï coco & vermicelles", e:"🥥", tag:"vegan", al:["soja"], ing:[
+  {id:"thai", express:true, n:"Soupe thaï coco & vermicelles", e:"🥥", tag:"vegan", al:["soja"], ing:[
     ["Lait de coco", R.ES, "800 ml", 2.80],
     ["Vermicelles de riz", R.ES, "200 g", 1.40],
     ["Champignons", R.FL, "250 g", 1.90],
@@ -879,7 +901,25 @@ const ALLERGENS = [
   {k:"oeuf", l:"Œuf"}, {k:"poisson", l:"Poisson"}, {k:"soja", l:"Soja"}
 ];
 const FOYERS = [{v:1,l:"1 personne"},{v:2,l:"2 personnes"},{v:4,l:"4 personnes"},{v:6,l:"6 personnes"}];
-const DAYS = ["LUN","MAR","MER","JEU","VEN"];
+
+const DAYS = [
+  {k:"lun", l:"LUN", n:"Lundi"},
+  {k:"mar", l:"MAR", n:"Mardi"},
+  {k:"mer", l:"MER", n:"Mercredi"},
+  {k:"jeu", l:"JEU", n:"Jeudi"},
+  {k:"ven", l:"VEN", n:"Vendredi"},
+  {k:"sam", l:"SAM", n:"Samedi"},
+  {k:"dim", l:"DIM", n:"Dimanche"}
+];
+const MEALS = [{k:"midi", l:"Midi"}, {k:"soir", l:"Soir"}];
+
+/* Combinaisons courantes, pour ne pas cocher quatorze cases à la main. */
+const PRESETS = [
+  {k:"soirs-semaine", l:"Soirs en semaine", days:["lun","mar","mer","jeu","ven"], meals:["soir"]},
+  {k:"soirs-tous",    l:"Tous les soirs",   days:"all", meals:["soir"]},
+  {k:"midi-soir-sem", l:"Midi et soir, en semaine", days:["lun","mar","mer","jeu","ven"], meals:["midi","soir"]},
+  {k:"midi-soir-tous",l:"Midi et soir, tous les jours", days:"all", meals:["midi","soir"]}
+];
 const BASELINE_PER_DINNER = 14.20; // panier non planifié, pour 4 personnes
 
 /* ============ état ============ */
@@ -892,6 +932,9 @@ const state = {
   foyer:4,
   diet:"tout",
   allerg:new Set(),
+  // Quels repas planifier, jour par jour : { lun:{midi:false,soir:true}, … }
+  slots:{},
+  // Le plan : une entrée par repas coché → { day:"lun", meal:"soir", r:recette }
   menu:[],
   checked:new Set(),
   pantry:new Set(["Riz","Huile & vinaigre","Épices tacos"]),
@@ -899,6 +942,31 @@ const state = {
 };
 // Dernier relevé : il y a deux jours pour toutes les enseignes.
 STORES.forEach(s => { state.priceDate[s.n] = Date.now() - 2 * 864e5; });
+
+/* Par défaut : les cinq dîners de la semaine, comme avant. */
+function applyPreset(key){
+  const p = PRESETS.find(x => x.k === key) || PRESETS[0];
+  const days = p.days === "all" ? DAYS.map(d => d.k) : p.days;
+  DAYS.forEach(d => {
+    state.slots[d.k] = {
+      midi: days.includes(d.k) && p.meals.includes("midi"),
+      soir: days.includes(d.k) && p.meals.includes("soir")
+    };
+  });
+}
+applyPreset("soirs-semaine");
+
+/* Les repas cochés, dans l'ordre de la semaine. */
+function selectedSlots(){
+  const out = [];
+  DAYS.forEach(d => MEALS.forEach(m => {
+    if(state.slots[d.k] && state.slots[d.k][m.k]) out.push({day:d.k, meal:m.k});
+  }));
+  return out;
+}
+const slotCount = () => selectedSlots().length;
+const planRecipes = () => state.menu.map(e => e.r);
+const dayOf = k => DAYS.find(d => d.k === k);
 
 /* ============ helpers ============ */
 const $ = s => document.querySelector(s);
@@ -922,7 +990,7 @@ function recipeCostAt(storeName, r){
 }
 const recipeCost = r => recipeCostAt(state.store, r);
 function menuTotal(){
-  return state.menu.reduce((a, r) => a + recipeCost(r), 0);
+  return planRecipes().reduce((a, r) => a + recipeCost(r), 0);
 }
 
 /* Budget : une valeur par enseigne. Tant que tu n'y as pas touché,
@@ -971,7 +1039,7 @@ function relevePrices(){
 }
 
 /* Ce que la MÊME semaine coûterait dans chaque enseigne, avec le budget fixé pour chacune. */
-const weekAt = name => state.menu.reduce((a, r) => a + recipeCostAt(name, r), 0);
+const weekAt = name => planRecipes().reduce((a, r) => a + recipeCostAt(name, r), 0);
 function compareStores(){
   return STORES.map(s => {
     const total = weekAt(s.n);
@@ -998,45 +1066,53 @@ function buildMenu(){
   const pool = eligible();
   // Sous 3 recettes possibles, il n'y a plus de semaine à composer.
   if(pool.length < 3) return {menu:[], reason:"filters"};
-  // Entre 3 et 4, on compose une semaine plus courte plutôt que d'afficher un menu
-  // qui contredirait les filtres.
-  const need = Math.min(5, pool.length);
 
-  const shuffled = pool.slice().sort(() => Math.random() - 0.5);
-  const pick = [];
+  const slots = selectedSlots();
+  if(!slots.length) return {menu:[], reason:"noslot"};
+
+  // Le midi doit rester rapide : on n'y met pas un rôti de deux heures.
+  const midiPool = pool.filter(r => r.express);
+  const shuffle = a => a.slice().sort(() => Math.random() - 0.5);
+
+  const plan = [];
+  const used = [];
   const tagCount = {};
-  for(const r of shuffled){
-    if(pick.length === need) break;
-    if((tagCount[r.tag] || 0) >= 2 && pool.length > 8) continue;
-    pick.push(r);
-    tagCount[r.tag] = (tagCount[r.tag] || 0) + 1;
-  }
-  for(const r of shuffled){
-    if(pick.length === need) break;
-    if(!pick.includes(r)) pick.push(r);
+
+  slots.forEach(slot => {
+    const wanted = slot.meal === "midi" && midiPool.length >= 2 ? midiPool : pool;
+    // On évite de répéter un plat, et de servir trois fois la même famille.
+    let choice =
+      shuffle(wanted).find(r => !used.includes(r) && (tagCount[r.tag] || 0) < 2) ||
+      shuffle(wanted).find(r => !used.includes(r)) ||
+      shuffle(wanted)[0];
+    plan.push({day:slot.day, meal:slot.meal, r:choice});
+    used.push(choice);
+    tagCount[choice.tag] = (tagCount[choice.tag] || 0) + 1;
+  });
+
+  // Tant qu'on dépasse, on remplace le repas le plus cher par une option moins chère,
+  // aux prix relevés de l'enseigne choisie.
+  const total = p => p.reduce((a, e) => a + recipeCost(e.r), 0);
+  let guard = 0;
+  while(total(plan) > budget() && guard++ < 60){
+    const idx = plan.reduce((best, e, i) =>
+      recipeCost(e.r) > recipeCost(plan[best].r) ? i : best, 0);
+    const slotPool = plan[idx].meal === "midi" && midiPool.length >= 2 ? midiPool : pool;
+    const inPlan = plan.map(e => e.r);
+    const cheaper = slotPool
+      .filter(r => !inPlan.includes(r))
+      .sort((a, b) => recipeCost(a) - recipeCost(b))[0];
+    if(!cheaper || recipeCost(cheaper) >= recipeCost(plan[idx].r)) break;
+    plan[idx] = {day:plan[idx].day, meal:plan[idx].meal, r:cheaper};
   }
 
-  // Tant qu'on dépasse, on remplace le plat le plus cher par le moins cher disponible,
-  // aux prix relevés de l'enseigne choisie.
-  const cost = recipeCost;
-  let guard = 0;
-  while(pick.reduce((a, r) => a + cost(r), 0) > budget() && guard++ < 40){
-    pick.sort((a, b) => cost(b) - cost(a));
-    const cheapest = pool
-      .filter(r => !pick.includes(r))
-      .sort((a, b) => cost(a) - cost(b))[0];
-    if(!cheapest || cost(cheapest) >= cost(pick[0])) break;
-    pick[0] = cheapest;
-  }
-  pick.sort(() => Math.random() - 0.5);
-  const over = pick.reduce((a, r) => a + cost(r), 0) > budget();
-  return {menu:pick, reason: over ? "tight" : (pick.length < 5 ? "short" : null)};
+  return {menu:plan, reason: total(plan) > budget() ? "tight" : null};
 }
 
 /* Liste de courses agrégée */
 function shoppingList(){
   const map = new Map();
-  state.menu.forEach(r => {
+  planRecipes().forEach(r => {
     r.ing.forEach(([nm, rayon, qty, price]) => {
       const key = nm + "|" + rayon;
       if(map.has(key)){
@@ -1094,10 +1170,12 @@ function renderHome(){
 
   const strip = $("#weekStrip");
   strip.textContent = "";
-  state.menu.forEach((r, i) => {
+  state.menu.forEach(entry => {
     const c = el("div", "daychip");
-    c.innerHTML = '<div class="d">' + DAYS[i] + '</div><div class="e">' + r.e +
-      '</div><div class="p tnum">' + (recipeCost(r) / state.foyer).toFixed(2).replace(".", ",") + ' €</div>';
+    c.innerHTML = '<div class="d">' + dayOf(entry.day).l +
+      (entry.meal === "midi" ? ' <span style="opacity:.6">·M</span>' : '') +
+      '</div><div class="e">' + entry.r.e +
+      '</div><div class="p tnum">' + (recipeCost(entry.r) / state.foyer).toFixed(2).replace(".", ",") + ' €</div>';
     strip.appendChild(c);
   });
 
@@ -1124,26 +1202,44 @@ function renderMenu(){
   $("#mBudget").textContent = budget();
   $("#mMeter").style.width = Math.min(100, (t.total / budget()) * 100) + "%";
   $("#mMeter").parentElement.classList.toggle("over", t.total > budget());
-  $("#mNote").textContent = state.menu.length + " dîners · " + state.foyer +
+  const midis = state.menu.filter(e => e.meal === "midi").length;
+  const soirs = state.menu.length - midis;
+  const parts = [];
+  if(midis) parts.push(midis + (midis > 1 ? " midis" : " midi"));
+  if(soirs) parts.push(soirs + (soirs > 1 ? " dîners" : " dîner"));
+  $("#mNote").textContent = parts.join(" · ") + " · " + state.foyer +
     (state.foyer > 1 ? " personnes" : " personne") +
     " · " + (t.count + t.ownedCount) + " ingrédients";
 
   const list = $("#mealList");
   list.textContent = "";
-  state.menu.forEach((r, i) => {
+
+  // Une entête par jour, puis ses repas : c'est comme ça qu'on lit une semaine.
+  let lastDay = null;
+  state.menu.forEach((entry, i) => {
+    const r = entry.r;
+    if(entry.day !== lastDay){
+      lastDay = entry.day;
+      const h = el("div", "eyebrow");
+      h.style.cssText = "padding:8px 4px 2px";
+      h.textContent = dayOf(entry.day).n;
+      list.appendChild(h);
+    }
+
     const row = el("div", "mealrow fadein");
-    row.style.animationDelay = (i * 45) + "ms";
+    row.style.animationDelay = (i * 40) + "ms";
     const perPers = (recipeCost(r) / state.foyer).toFixed(2).replace(".", ",");
     const tagLabel = {vegan:"Vegan", vege:"Végé", poisson:"Poisson", viande:"Viande"}[r.tag];
     const tagClass = r.tag === "vegan" || r.tag === "vege" ? "mint" : (r.tag === "poisson" ? "" : "sun");
     row.innerHTML =
-      '<div class="day"><div class="d">' + DAYS[i] + '</div><div class="e">' + r.e + '</div></div>' +
+      '<div class="day"><div class="d">' + (entry.meal === "midi" ? "MIDI" : "SOIR") +
+        '</div><div class="e">' + r.e + '</div></div>' +
       '<div class="body"><div class="name">' + r.n + '</div><div class="meta">' +
         '<span class="pill ' + tagClass + '">' + tagLabel + '</span>' +
         '<span class="pill tnum">' + perPers + ' € / pers</span>' +
       '</div></div>';
     const b = el("button", "swap");
-    b.setAttribute("aria-label", "Remplacer " + r.n);
+    b.setAttribute("aria-label", "Remplacer " + r.n + ", " + dayOf(entry.day).n + " " + entry.meal);
     b.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 0 1 14.6-6M20.5 12a8.5 8.5 0 0 1-14.6 6"/><path d="M18 2.5V6h-3.5M6 21.5V18h3.5"/></svg>';
     b.addEventListener("click", () => openSwap(i));
     row.appendChild(b);
@@ -1270,7 +1366,7 @@ function renderCompare(){
   link.textContent = "Comparer les 13 enseignes";
   link.addEventListener("click", () => {
     openSheet("Ta semaine dans les 13 enseignes",
-      "Les mêmes " + state.menu.length + " dîners, aux prix relevés de chaque enseigne.", body => {
+      "Les mêmes " + state.menu.length + " repas, aux prix relevés de chaque enseigne.", body => {
         const box = el("div", "items");
         compareStores().forEach(row => {
           const r = compareRow(row, here);
@@ -1320,6 +1416,8 @@ function renderProfile(){
     ? "Budget proposé pour " + state.store + ". Chaque enseigne garde le sien."
     : "Budget que tu as fixé pour " + state.store + ".";
 
+  renderMealGrid();
+
   buildOptions($("#foyerOpts"), FOYERS.map(f => ({k:String(f.v), l:f.l})), String(state.foyer), k => {
     state.foyer = Number(k); renderProfile();
   });
@@ -1351,6 +1449,48 @@ function renderProfile(){
   });
 }
 
+/* Quels repas planifier : quatre combinaisons courantes, puis le détail case par case. */
+function renderMealGrid(){
+  const cur = PRESETS.find(p => {
+    const days = p.days === "all" ? DAYS.map(d => d.k) : p.days;
+    return DAYS.every(d => MEALS.every(m =>
+      !!(state.slots[d.k] && state.slots[d.k][m.k]) ===
+      (days.includes(d.k) && p.meals.includes(m.k))));
+  });
+  buildOptions($("#presetOpts"), PRESETS, cur ? cur.k : "__custom", k => {
+    applyPreset(k); renderProfile();
+  });
+
+  const grid = $("#mealGrid");
+  grid.textContent = "";
+  DAYS.forEach(d => {
+    const row = el("div", "mealrowsel");
+    const name = el("div", "dname");
+    name.textContent = d.l;
+    row.appendChild(name);
+    MEALS.forEach(m => {
+      const on = !!(state.slots[d.k] && state.slots[d.k][m.k]);
+      const b = el("button", "slot");
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(on));
+      b.setAttribute("aria-label", m.l + " " + d.n + (on ? ", planifié" : ", non planifié"));
+      b.innerHTML = '<span class="tick"><svg viewBox="0 0 24 24"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg></span>' + m.l;
+      b.addEventListener("click", () => {
+        state.slots[d.k] = state.slots[d.k] || {midi:false, soir:false};
+        state.slots[d.k][m.k] = !state.slots[d.k][m.k];
+        renderProfile();
+      });
+      row.appendChild(b);
+    });
+    grid.appendChild(row);
+  });
+
+  const n = slotCount();
+  $("#slotNote").textContent = n
+    ? n + (n > 1 ? " repas planifiés dans la semaine" : " repas planifié dans la semaine")
+    : "Aucun repas coché : coche au moins un midi ou un soir.";
+}
+
 function buildOptions(host, opts, current, onPick){
   host.textContent = "";
   opts.forEach(o => {
@@ -1375,7 +1515,7 @@ function renderBadge(){
 /* ============ navigation ============ */
 const TITLES = {
   home:   ["Bonsoir Cédric", "Semaine du 17 au 21 août"],
-  menu:   ["Ta semaine", "Cinq dîners, un seul budget"],
+  menu:   ["Ta semaine", "Tes repas, un seul budget"],
   courses:["Ta liste", "Triée dans l'ordre des rayons"],
   placard:["Ton placard", "Déduit automatiquement de la liste"],
   profil: ["Tes réglages", "Budget, enseigne, régime"]
@@ -1412,9 +1552,12 @@ $("#backdrop").addEventListener("click", closeSheet);
 document.addEventListener("keydown", e => { if(e.key === "Escape" && sheetOpen) closeSheet(); });
 
 function openSwap(index){
-  const current = state.menu[index];
-  const others = eligible().filter(r => !state.menu.includes(r));
-  const rest = state.menu.reduce((a, r, i) => i === index ? a : a + recipeCost(r), 0);
+  const current = state.menu[index].r;
+  const slot = state.menu[index];
+  const midiPool = eligible().filter(r => r.express);
+  const pool = slot.meal === "midi" && midiPool.length >= 2 ? midiPool : eligible();
+  const others = pool.filter(r => !planRecipes().includes(r));
+  const rest = state.menu.reduce((a, e, i) => i === index ? a : a + recipeCost(e.r), 0);
   openSheet("Remplacer " + current.n, "Ces alternatives gardent ta semaine sous " + budget() + " €.", body => {
     const fits = others.filter(r => rest + recipeCost(r) <= budget());
     const shown = (fits.length ? fits : others).sort((a, b) => recipeCost(a) - recipeCost(b)).slice(0, 6);
@@ -1436,7 +1579,7 @@ function openSwap(index){
         (over ? "dépasse de " + eur(rest + recipeCost(r) - budget()) : eur(recipeCost(r)) + " ce dîner") +
         '</span></div></div>';
       b.addEventListener("click", () => {
-        state.menu[index] = r;
+        state.menu[index] = Object.assign({}, state.menu[index], {r:r});
         state.checked.clear();
         closeSheet();
         renderAll();
@@ -1465,6 +1608,12 @@ function generate(){
   setTimeout(() => {
     clearInterval(tick);
     const res = buildMenu();
+    if(res.reason === "noslot"){
+      loader.classList.remove("on");
+      toast("Aucun repas coché : choisis au moins un midi ou un soir.");
+      go("profil");
+      return;
+    }
     if(res.reason === "filters"){
       loader.classList.remove("on");
       toast("Trop de filtres : moins de 3 dîners restent possibles. Assouplis un régime ou un allergène.");
