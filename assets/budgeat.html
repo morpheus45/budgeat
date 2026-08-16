@@ -423,6 +423,18 @@ select:focus{outline:none;border-color:var(--green)}
   background:var(--mint);color:var(--green-deep);font-size:9.5px;font-weight:800;
   letter-spacing:.3px;margin-left:6px;vertical-align:1px;
 }
+.prbtn{
+  border-radius:8px;padding:3px 5px;margin:-3px -5px;
+  text-align:right;font:inherit;font-weight:800;font-size:14px;color:var(--ink);
+}
+.prbtn:hover{background:var(--mint);color:var(--green-deep)}
+.tagmien{
+  display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:6px;
+  background:var(--green-deep);color:#FDFBF4;font-size:9.5px;font-weight:800;
+  letter-spacing:.3px;margin-left:6px;vertical-align:1px;
+}
+:root[data-theme="dark"] .tagmien{background:var(--green);color:var(--on-green)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .tagmien{background:var(--green);color:var(--on-green)}}
 .tagpromo{
   display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:6px;
   background:var(--coral);color:#fff;font-size:9.5px;font-weight:800;
@@ -1114,6 +1126,8 @@ const state = {
   // Promos saisies depuis le catalogue : { ing, pct, store }
   promos:[],
   // Prix relevés en ligne : { "Carottes": {perKg, date, n} }
+  // Prix relevés par toi en rayon : { Lidl: { "Poulet fermier": {perKg} } }
+  prix:{},
   real:{},
   realOn:true,
   // Le plan : une entrée par repas coché → { day:"lun", meal:"soir", r:recette }
@@ -1166,6 +1180,44 @@ function qtyToKg(qty){
   return m[2].toLowerCase() === "kg" ? v : v / 1000;
 }
 
+/* Les recettes sont écrites pour 4 personnes. La quantité affichée doit suivre
+   le foyer, sinon la liste annonce « 1 kg » et facture 500 g. */
+function formatQty(qty){
+  const f = scale();
+  if(f === 1) return qty;
+  const kg = qtyToKg(qty);
+  if(kg != null){
+    const g = kg * f * 1000;
+    return g >= 1000
+      ? String(+(g / 1000).toFixed(2)).replace(".", ",") + " kg"
+      : Math.round(g) + " g";
+  }
+  // « 2 pièces », « 4 tranches »… : on met à l'échelle le compte, jamais sous 1.
+  const m = String(qty).match(/^([\d.,]+)\s+(.+)$/);
+  if(m){
+    const n = parseFloat(m[1].replace(",", "."));
+    if(!isNaN(n)){
+      const v = Math.max(1, Math.round(n * f));
+      let unite = m[2];
+      if(v === 1) unite = unite.replace(/s\b/, "");
+      return v + " " + unite;
+    }
+  }
+  return qty;
+}
+
+/* Prix corrigé à la main pour cette enseigne : il prime sur tout le reste.
+   Stocké au kilo quand la quantité s'y prête, pour valoir sur toutes les recettes. */
+function overrideFor(ingName, qty, storeName){
+  const o = (state.prix[storeName] || {})[ingName];
+  if(!o) return null;
+  if(o.perKg != null){
+    const kg = qtyToKg(qty);
+    return kg == null ? null : o.perKg * kg;
+  }
+  return o.parQty && o.parQty[qty] != null ? o.parQty[qty] : null;
+}
+
 /* Promo active sur un ingrédient, dans une enseigne donnée. */
 function promoFor(ingName, storeName){
   return state.promos.find(p => p.ing === ingName && p.store === storeName) || null;
@@ -1179,6 +1231,14 @@ function priceAt(storeName, base, rayon, ingName, qty){
   const s = storeBy(storeName);
   const dev = s.r[RAYON_ORDER.indexOf(rayon)] ?? 1;
   const drift = (state.drift[storeName] || {})[ingName] ?? 1;
+
+  // Ton relevé en rayon fait autorité sur tout le reste.
+  const tien = overrideFor(ingName, qty, storeName);
+  if(tien != null){
+    let p = tien * scale();
+    const promoT = promoFor(ingName, storeName);
+    return promoT ? p * (1 - promoT.pct / 100) : p;
+  }
 
   const real = state.realOn ? state.real[ingName] : null;
   const kg = real ? qtyToKg(qty) : null;
@@ -1401,9 +1461,9 @@ function shoppingList(){
         const it = map.get(key);
         it.price += unitPrice(price, rayon, nm, qty);
         it.times += 1;
-        it.qty = it.times + " × " + qty;
+        it.qty = it.times + " × " + qty; it.qtyAff = it.times + " × " + formatQty(qty);
       } else {
-        map.set(key, {nm, rayon, qty, times:1, price: unitPrice(price, rayon, nm, qty), real: isRealPriced(nm, qty), promo: promoFor(nm, state.store)});
+        map.set(key, {nm, rayon, qty, qtyAff:formatQty(qty), times:1, tien: overrideFor(nm, qty, state.store) != null, price: unitPrice(price, rayon, nm, qty), real: isRealPriced(nm, qty), promo: promoFor(nm, state.store)});
       }
     });
   });
@@ -1581,16 +1641,26 @@ function renderCourses(){
 
       const txt = el("div", "txt");
       const real = state.realOn && state.real[it.nm] ? state.real[it.nm] : null;
+      const provenance = it.tien
+        ? " · ton prix"
+        : (it.real && real
+            ? " · " + real.perKg.toFixed(2).replace(".", ",") + " €/kg · " + real.n +
+              " relevés " + (real.source === "enseigne" ? state.store : "France")
+            : " · estimé");
       txt.innerHTML = '<div class="nm">' + it.nm +
         (it.promo ? '<span class="tagpromo">−' + it.promo.pct + ' %</span>' : '') +
-        (it.real ? '<span class="tagreal">RELEVÉ</span>' : '') +
-        '</div><div class="qt">' + it.qty +
-        (it.owned ? " · déjà au placard" : "") +
-        (it.real && real ? " · " + real.perKg.toFixed(2).replace(".", ",") + " €/kg · " + real.n + " relevés " + (real.source === 'enseigne' ? state.store : 'France') : " · estimé") +
+        (it.tien ? '<span class="tagmien">TON PRIX</span>'
+                 : (it.real ? '<span class="tagreal">RELEVÉ</span>' : '')) +
+        '</div><div class="qt">' + it.qtyAff +
+        (it.owned ? " · déjà au placard" : "") + provenance +
         '</div>';
 
-      const pr = el("div", "pr tnum");
+      // Le prix est cliquable : c'est la seule façon d'être juste sur les
+      // rayons qu'aucune base ne couvre.
+      const pr = el("button", "pr tnum prbtn");
       pr.textContent = it.owned ? "0,00 €" : eur(it.price);
+      pr.setAttribute("aria-label", "Corriger le prix de " + it.nm);
+      pr.addEventListener("click", () => ouvrirCorrection(it));
 
       const st = el("button", "stash");
       st.setAttribute("aria-label", it.owned ? "Retirer " + it.nm + " du placard" : "J'ai déjà " + it.nm);
@@ -1719,7 +1789,9 @@ function renderProfile(){
   renderMealGrid();
 
   buildOptions($("#foyerOpts"), FOYERS.map(f => ({k:String(f.v), l:f.l})), String(state.foyer), k => {
-    state.foyer = Number(k); renderProfile();
+    // Le foyer change les quantités ET les prix du plan en cours : tout doit suivre,
+    // sans attendre une regénération.
+    state.foyer = Number(k); renderAll();
   });
   buildOptions($("#dietOpts"), DIETS, state.diet, k => { state.diet = k; renderProfile(); });
 
@@ -1749,6 +1821,77 @@ function renderProfile(){
   });
 }
 
+/* ============ correction d'un prix ============
+   Aucune base ouverte ne couvre la viande, la crèmerie ni l'épicerie en France.
+   Plutôt que d'estimer indéfiniment, l'app apprend le prix que TU vois en rayon.
+   Enregistré au kilo quand c'est possible, pour valoir sur toutes les recettes. */
+const PRIX_LS = "budgeat.prix";
+function sauverPrix(){
+  try{ localStorage.setItem(PRIX_LS, JSON.stringify(state.prix)); }catch(e){}
+}
+function lirePrix(){
+  try{ state.prix = JSON.parse(localStorage.getItem(PRIX_LS) || "{}") || {}; }catch(e){ state.prix = {}; }
+}
+
+function ouvrirCorrection(it){
+  const kg = qtyToKg(it.qty);
+  const qAff = it.qtyAff;
+  openSheet("Le vrai prix de " + it.nm,
+    "Ce que tu vois en rayon chez " + state.store + ", pour " + qAff + ".", body => {
+
+      const ligne = el("div", "addrow");
+      const inp = el("input");
+      inp.type = "text";
+      inp.inputMode = "decimal";
+      inp.value = (it.price).toFixed(2).replace(".", ",");
+      inp.setAttribute("aria-label", "Prix en euros pour " + qAff);
+      const ok = el("button", "btn slim");
+      ok.style.height = "46px";
+      ok.textContent = "Enregistrer";
+      ligne.append(inp, ok);
+      body.appendChild(ligne);
+
+      const note = el("div");
+      note.style.cssText = "font-size:12.5px;font-weight:700;color:var(--muted)";
+      note.textContent = kg != null
+        ? "Enregistré au kilo : ce prix vaudra aussi quand une recette en demande une autre quantité."
+        : "Enregistré pour cette quantité.";
+      body.appendChild(note);
+
+      ok.addEventListener("click", () => {
+        const v = parseFloat(String(inp.value).replace(",", ".").replace(/[^\d.]/g, ""));
+        if(!(v > 0)){ toast("Donne un prix supérieur à zéro."); return; }
+        // Le prix saisi vaut pour la quantité AFFICHÉE, déjà mise à l'échelle du foyer.
+        const pourQuatre = v / scale();
+        const parEnseigne = state.prix[state.store] || (state.prix[state.store] = {});
+        if(kg != null){
+          parEnseigne[it.nm] = {perKg: pourQuatre / kg};
+        } else {
+          const e = parEnseigne[it.nm] || (parEnseigne[it.nm] = {parQty:{}});
+          e.parQty = e.parQty || {};
+          e.parQty[it.qty] = pourQuatre;
+        }
+        sauverPrix();
+        closeSheet();
+        renderAll();
+        toast(it.nm + " : " + eur(v) + " retenu pour " + state.store + ".");
+      });
+
+      if(it.tien){
+        const del = el("button", "btn ghost");
+        del.textContent = "Oublier mon prix";
+        del.addEventListener("click", () => {
+          if(state.prix[state.store]) delete state.prix[state.store][it.nm];
+          sauverPrix();
+          closeSheet();
+          renderAll();
+          toast("Retour au prix par défaut pour " + it.nm + ".");
+        });
+        body.appendChild(del);
+      }
+    });
+}
+
 /* ============ compte ============ */
 const PLANS = {
   launch: {l:"Lancement", d:"Accès complet, offert."},
@@ -1770,7 +1913,8 @@ $("#acctOut").addEventListener("click", () => {
   try{ localStorage.removeItem(LS); }catch(e){}
   auth.user = null; auth.token = null; auth.mode = supaPret() ? "supabase" : "local";
   auth.inscription = true;
-  majEcranPorte();
+  lirePrix();
+majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
   const g = $("#gate");
   g.hidden = false; g.classList.remove("out");
@@ -1792,7 +1936,8 @@ function renderRealPanel(){
     : "Remplace l'estimation par des prix réels sur les fruits et légumes.";
 
   if(!state.realOn){
-    $("#realDetail").textContent = dispo
+    const corriges = Object.keys(state.prix[state.store] || {}).length;
+    $("#realDetail").textContent = (corriges ? corriges + " prix corrigés par toi chez " + state.store + " · " : "") + dispo
       ? dispo + (dispo > 1 ? " ingrédients de ta semaine sont couverts." : " ingrédient de ta semaine est couvert.")
       : "Aucun ingrédient de ta semaine n'est couvert par la base.";
     return;
@@ -2373,7 +2518,8 @@ function ouvrirApp(){
 
 $("#gSwitch").addEventListener("click", () => {
   auth.inscription = !auth.inscription;
-  majEcranPorte();
+  lirePrix();
+majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
 });
 
@@ -2458,6 +2604,7 @@ setInterval(clock, 20000);
 
 /* ============ démarrage ============ */
 state.menu = buildMenu().menu;
+lirePrix();
 majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
 if(lireSession()){ $("#gate").hidden = true; }
