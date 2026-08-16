@@ -1,0 +1,84 @@
+name: Build APK
+
+# L'APK distribué est construit ici, pas sur un poste.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Le runner fournit déjà un SDK Android complet ; build.sh détecte
+      # tout seul les versions de build-tools et de plateforme présentes.
+      - name: Vérifier le SDK Android
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/build-tools"
+          ls "$ANDROID_HOME/platforms"
+
+      - name: Restaurer la clé de signature
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > budgeat.keystore
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            echo "Clé de release restaurée depuis les secrets."
+          else
+            echo "mode=temporaire" >> "$GITHUB_OUTPUT"
+            echo "::warning::Aucun secret KEYSTORE_BASE64 : l'APK sera signé avec une clé jetable, différente à chaque build. Une mise à jour par-dessus une installation existante sera refusée par Android."
+          fi
+
+      - name: Construire l'APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'budgeat' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'budgeat' }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('ci-{0}', github.run_number) }}
+        run: bash build.sh
+
+      - name: Vérifier la signature et le contenu
+        run: |
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs budgeat.apk
+          "$BT/aapt" dump badging budgeat.apk | grep -E "^(package|application-label|sdkVersion|targetSdkVersion)"
+          # L'interface doit être embarquée : sans elle l'app démarre sur une page blanche.
+          "$BT/aapt" list budgeat.apk | grep -q "^assets/budgeat.html$" \
+            && echo "asset budgeat.html présent" \
+            || { echo "asset budgeat.html MANQUANT"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: budgeat-apk-${{ github.run_number }}
+          path: budgeat.apk
+          if-no-files-found: error
+
+      - name: Publier sur la release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          gh release upload "$TAG" budgeat.apk --clobber \
+            || gh release create "$TAG" budgeat.apk \
+                 --title "Budgeat ${TAG#v}" \
+                 --notes "APK construit par CI (signature : $MODE)."

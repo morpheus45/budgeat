@@ -3,9 +3,10 @@
 # Prérequis : JDK 17 (dans le PATH) et un SDK Android avec build-tools + une plateforme.
 set -euo pipefail
 
-SDK="${ANDROID_HOME:-/c/Android}"
-BT_VER="${BT_VER:-35.0.0}"
-PLATFORM="${PLATFORM:-android-34}"
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/c/Android}}"
+# Versions auto-détectées : les runners CI n'ont pas les mêmes que ce poste.
+BT_VER="${BT_VER:-$(ls "$SDK/build-tools" 2>/dev/null | sort -V | tail -1)}"
+PLATFORM="${PLATFORM:-$(ls "$SDK/platforms" 2>/dev/null | sort -V | tail -1)}"
 
 BT="$SDK/build-tools/$BT_VER"
 JAR="$SDK/platforms/$PLATFORM/android.jar"
@@ -15,6 +16,14 @@ MIN_SDK=26
 TARGET_SDK=34
 VERSION_CODE="${VERSION_CODE:-1}"
 VERSION_NAME="${VERSION_NAME:-1.0}"
+
+# Signature : surchargeable pour que le CI injecte la vraie clé.
+KS="${KEYSTORE_FILE:-budgeat.keystore}"
+KS_PASS="${KEYSTORE_PASSWORD:-budgeat}"
+KS_ALIAS="${KEY_ALIAS:-budgeat}"
+KEY_PASS="${KEY_PASSWORD:-$KS_PASS}"
+
+echo "SDK=$SDK  build-tools=$BT_VER  platform=$PLATFORM"
 
 [ -f "$JAR" ] || { echo "android.jar introuvable : $JAR"; exit 1; }
 [ -x "$BT/aapt2.exe" ] || [ -x "$BT/aapt2" ] || { echo "build-tools introuvables : $BT"; exit 1; }
@@ -60,16 +69,16 @@ echo "==> 5/6 intégration du dex + alignement"
 "$ZIPALIGN" -f 4 "$OUT/app.unsigned.apk" "$OUT/app.aligned.apk"
 
 echo "==> 6/6 signature"
-KS="budgeat.keystore"
 if [ ! -f "$KS" ]; then
-  echo "    (création du keystore local)"
-  keytool -genkeypair -keystore "$KS" -alias budgeat \
-    -storepass budgeat -keypass budgeat \
+  echo "    (aucun keystore : création d'une clé locale — APK non redistribuable)"
+  keytool -genkeypair -keystore "$KS" -alias "$KS_ALIAS" \
+    -storepass "$KS_PASS" -keypass "$KEY_PASS" \
     -keyalg RSA -keysize 2048 -validity 10000 \
     -dname "CN=Budgeat, O=Perso, C=FR" >/dev/null 2>&1
 fi
 "$APKSIGNER" sign \
-  --ks "$KS" --ks-pass pass:budgeat --key-pass pass:budgeat \
+  --ks "$KS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
+  --ks-key-alias "$KS_ALIAS" \
   --out budgeat.apk "$OUT/app.aligned.apk"
 
 "$APKSIGNER" verify --print-certs budgeat.apk | head -4
