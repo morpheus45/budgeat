@@ -20,8 +20,14 @@ import android.webkit.WebViewClient;
  */
 public class MainActivity extends Activity {
 
+    private static final int REQ_GEO = 42;
+
     private WebView web;
     private Updater updater;
+
+    // Demande de géolocalisation laissée en attente le temps qu'Android réponde.
+    private String geoOrigine;
+    private GeolocationPermissions.Callback geoCallback;
 
     /**
      * Pont exposé à la page. Elle est un asset local et toute navigation externe est
@@ -52,6 +58,8 @@ public class MainActivity extends Activity {
         // Les assets de l'APK restent lisibles ; le reste du système, non.
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        // Sans ça, navigator.geolocation reste muet dans une WebView.
+        s.setGeolocationEnabled(true);
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setDisplayZoomControls(false);
@@ -76,11 +84,14 @@ public class MainActivity extends Activity {
                        == PackageManager.PERMISSION_GRANTED;
                 if (accorde) {
                     callback.invoke(origin, true, false);
-                } else {
-                    callback.invoke(origin, false, false);
-                    requestPermissions(
-                        new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+                    return;
                 }
+                // On garde la demande en attente : refuser sèchement puis demander
+                // l'autorisation laisserait la page sans réponse même après ton accord.
+                geoOrigine = origin;
+                geoCallback = callback;
+                requestPermissions(
+                    new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_GEO);
             }
         });
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -98,6 +109,24 @@ public class MainActivity extends Activity {
                 @Override public void run() { updater.check(true); }
             }, 2500);
         }
+    }
+
+    /** Ton accord arrive après coup : c'est ici qu'on débloque la page. */
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] resultats) {
+        if (code == REQ_GEO && geoCallback != null) {
+            boolean ok = resultats.length > 0
+                      && resultats[0] == PackageManager.PERMISSION_GRANTED;
+            geoCallback.invoke(geoOrigine, ok, false);
+            geoCallback = null;
+            geoOrigine = null;
+            if (ok && web != null) {
+                // La première demande a échoué faute d'autorisation : on relance.
+                web.evaluateJavascript("window.__budgeatRelancerPosition && window.__budgeatRelancerPosition()", null);
+            }
+            return;
+        }
+        super.onRequestPermissionsResult(code, perms, resultats);
     }
 
     @Override

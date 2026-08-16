@@ -1941,7 +1941,11 @@ function renderMagasin(){
     : "Aucun magasin choisi : les prix retombent sur la moyenne du pays.";
 }
 
-async function ouvrirChoixMagasin(position){
+/* La position n'est jamais un préalable : l'écran s'ouvre tout de suite avec la
+   recherche par ville, et se retrie si les coordonnées finissent par arriver.
+   Attendre la géolocalisation pour afficher quoi que ce soit laissait un écran
+   vide quand elle ne répondait pas. */
+async function ouvrirChoixMagasin(position, demanderPosition){
   openSheet("Choisis ton magasin",
     "Les prix sont rattachés à un magasin précis, pas à l'enseigne.", async body => {
       const rech = el("input");
@@ -2009,24 +2013,45 @@ async function ouvrirChoixMagasin(position){
 
       rech.addEventListener("input", dessiner);
       dessiner();
+
+      // La géolocalisation vient enrichir une liste déjà affichée.
+      if(demanderPosition){
+        const geo = el("div");
+        geo.style.cssText = "font-size:12.5px;font-weight:800;color:var(--green-ink)";
+        geo.textContent = "Recherche de ta position…";
+        body.insertBefore(geo, liste);
+
+        const echec = raison => {
+          geo.style.color = "var(--coral)";
+          geo.textContent = raison + " Cherche par ville ci-dessus.";
+        };
+
+        const tenter = () => {
+          if(!navigator.geolocation){ echec("Ce navigateur ne sait pas te localiser."); return; }
+          geo.style.color = "var(--green-ink)";
+          geo.textContent = "Recherche de ta position…";
+          navigator.geolocation.getCurrentPosition(
+            p => {
+              position = {lat:p.coords.latitude, lon:p.coords.longitude};
+              geo.textContent = "Magasins triés par distance.";
+              dessiner();
+            },
+            err => echec(err && err.code === 1
+              ? "Position refusée."
+              : "Position indisponible."),
+            {timeout:12000, maximumAge:600000, enableHighAccuracy:false}
+          );
+        };
+
+        // Android accorde l'autorisation après coup : il rappelle cette fonction.
+        window.__budgeatRelancerPosition = tenter;
+        tenter();
+      }
     });
 }
 
-$("#magChoisir").addEventListener("click", () => ouvrirChoixMagasin(null));
-
-$("#magPres").addEventListener("click", () => {
-  if(!navigator.geolocation){
-    toast("Ce navigateur ne sait pas te localiser.");
-    ouvrirChoixMagasin(null);
-    return;
-  }
-  toast("Recherche de ta position…");
-  navigator.geolocation.getCurrentPosition(
-    p => ouvrirChoixMagasin({lat:p.coords.latitude, lon:p.coords.longitude}),
-    () => { toast("Position refusée. Cherche par ville."); ouvrirChoixMagasin(null); },
-    {timeout:10000, maximumAge:600000}
-  );
-});
+$("#magChoisir").addEventListener("click", () => ouvrirChoixMagasin(null, false));
+$("#magPres").addEventListener("click", () => ouvrirChoixMagasin(null, true));
 
 /* ============ correction d'un prix ============
    Aucune base ouverte ne couvre la viande, la crèmerie ni l'épicerie en France.
