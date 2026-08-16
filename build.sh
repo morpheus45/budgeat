@@ -5,8 +5,14 @@ set -euo pipefail
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/c/Android}}"
 # Versions auto-détectées : les runners CI n'ont pas les mêmes que ce poste.
-BT_VER="${BT_VER:-$(ls "$SDK/build-tools" 2>/dev/null | sort -V | tail -1)}"
-PLATFORM="${PLATFORM:-$(ls "$SDK/platforms" 2>/dev/null | sort -V | tail -1)}"
+# Uniquement du stable : les runners embarquent des préversions (android-37.2-beta2,
+# build-tools rc) qu'un simple « sort -V | tail -1 » sélectionnerait, produisant un
+# APK compilé contre un SDK marqué DEV.
+BT_VER="${BT_VER:-$(ls "$SDK/build-tools" 2>/dev/null | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -1)}"
+PLATFORM="${PLATFORM:-$(ls "$SDK/platforms" 2>/dev/null | grep -E '^android-[0-9]+$' | sort -V | tail -1)}"
+
+[ -n "$BT_VER" ]   || { echo "aucune build-tools stable dans $SDK/build-tools"; exit 1; }
+[ -n "$PLATFORM" ] || { echo "aucune plateforme stable dans $SDK/platforms"; exit 1; }
 
 BT="$SDK/build-tools/$BT_VER"
 JAR="$SDK/platforms/$PLATFORM/android.jar"
