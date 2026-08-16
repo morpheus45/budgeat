@@ -1,18 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Marque Budgeat : la liste de courses, et la pièce qui la borne. -->
+<!-- Marque Budgeat : la pièce vue de dessus devient l'assiette, couverts posés dessus.
+
+     Contraintes d'icône adaptative : le contenu doit tenir dans les 72 dp centraux
+     d'un carré de 108, car le lanceur découpe le reste selon la forme du système.
+     La pièce fait 60 dp de diamètre, centrée — elle survit au masque circulaire.
+
+     VectorDrawable ne connaît pas les tirets : la cannelure de la pièce est un
+     anneau plein en transparence, pas un pointillé. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <path
-        android:strokeColor="#8FE9BC"
-        android:strokeWidth="5.5"
-        android:strokeLineCap="round"
-        android:pathData="M34,40 L74,40 M34,54 L74,54 M34,68 L56,68" />
-
+    <!-- La pièce -->
     <path
         android:fillColor="#FFD23F"
-        android:pathData="M71,68 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+        android:pathData="M54,54 m-30,0 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
+
+    <!-- Cannelure intérieure -->
+    <path
+        android:strokeColor="#14593A"
+        android:strokeWidth="2.5"
+        android:strokeAlpha="0.38"
+        android:pathData="M54,54 m-22,0 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0" />
+
+    <!-- Fourchette -->
+    <path
+        android:strokeColor="#14593A"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M46,40 L46,53 a4,4 0 0,0 8,0 L54,40" />
+    <path
+        android:strokeColor="#14593A"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M50,53 L50,69" />
+
+    <!-- Couteau -->
+    <path
+        android:strokeColor="#14593A"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M64,40 c-4,3 -4,10 0,12 L64,69" />
 </vector>

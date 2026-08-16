@@ -489,6 +489,31 @@ input[type=range]::-moz-range-thumb{
 .sheet .lede{font-size:13px;color:var(--muted);margin:0 0 16px;font-weight:600}
 .sheetbody{display:flex;flex-direction:column;gap:16px}
 
+/* ---------- porte d'entrée ---------- */
+.gate{
+  position:absolute;inset:0;z-index:35;background:var(--cream);
+  display:flex;align-items:center;justify-content:center;padding:28px;
+  transition:opacity .3s, transform .3s;
+}
+.gate[hidden]{display:none}
+.gate.out{opacity:0;transform:scale(1.03);pointer-events:none}
+.gatebody{width:100%;max-width:330px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.gatetitle{
+  font-family:var(--display);font-weight:800;font-size:27px;line-height:1.15;
+  letter-spacing:-.5px;margin:0 0 8px;text-wrap:balance;
+}
+.gatelede{font-size:14px;color:var(--muted);font-weight:600;margin:0 0 22px;text-wrap:balance}
+.gatefields{display:flex;flex-direction:column;gap:9px;width:100%;margin-bottom:14px}
+.gatefields input[hidden]{display:none}
+.gatelink{
+  margin-top:14px;font-size:13.5px;font-weight:800;color:var(--green-ink);
+  text-decoration:underline;text-underline-offset:3px;
+}
+.gatenote{
+  margin:20px 0 0;font-size:12px;font-weight:700;color:var(--faint);
+  display:inline-flex;align-items:center;gap:6px;text-wrap:balance;line-height:1.4;
+}
+
 /* ---------- loader ---------- */
 .loader{
   position:absolute;inset:0;z-index:30;background:var(--green-deep);color:#FDFBF4;
@@ -757,6 +782,18 @@ input[type=range]::-moz-range-thumb{
 
         <button class="btn" id="applyProfile">Appliquer et regénérer</button>
 
+        <div class="card field" id="acctCard">
+          <label>Ton compte</label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:800;font-size:15px" id="acctName">—</div>
+              <div style="font-size:12px;color:var(--faint);font-weight:700" id="acctSub">—</div>
+            </div>
+            <span class="pill mint" id="acctPlan">Lancement</span>
+          </div>
+          <button class="btn slim ghost" id="acctOut" style="width:100%">Se déconnecter</button>
+        </div>
+
         <!-- Visible uniquement dans l'app installée : le navigateur n'a pas de pont natif. -->
         <div class="card field" id="appCard" hidden>
           <label>Application</label>
@@ -784,6 +821,36 @@ input[type=range]::-moz-range-thumb{
       <button class="tab" role="tab" data-screen="profil" aria-selected="false"><span class="dot"></span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.4" r="3.9"/><path d="M4.6 20.2c.6-4 3.7-6 7.4-6s6.8 2 7.4 6"/></svg>Profil</button>
     </nav>
+
+    <!-- Porte d'entrée : masque l'app tant qu'aucun compte n'est ouvert. -->
+    <div class="gate" id="gate">
+      <div class="gatebody">
+        <svg width="72" height="72" viewBox="0 0 108 108" aria-hidden="true" style="margin-bottom:18px">
+          <rect width="108" height="108" rx="26" fill="#FDFBF4"/>
+          <circle cx="54" cy="54" r="30" fill="#FFD23F"/>
+          <circle cx="54" cy="54" r="22" fill="none" stroke="#14593A" stroke-width="2.5" opacity=".38"/>
+          <path d="M46 40v13a4 4 0 0 0 8 0V40" stroke="#14593A" stroke-width="4" stroke-linecap="round" fill="none"/>
+          <path d="M50 53v16" stroke="#14593A" stroke-width="4" stroke-linecap="round"/>
+          <path d="M64 40c-4 3-4 10 0 12v17" stroke="#14593A" stroke-width="4" stroke-linecap="round" fill="none"/>
+        </svg>
+
+        <h1 class="gatetitle" id="gateTitle">Tes dîners, pile dans ton budget</h1>
+        <p class="gatelede" id="gateLede">Deux minutes pour ton premier menu.</p>
+
+        <div class="gatefields">
+          <input type="text" id="gPrenom" placeholder="Ton prénom" autocomplete="given-name" aria-label="Prénom">
+          <input type="email" id="gEmail" placeholder="Ton e-mail" autocomplete="email" aria-label="E-mail" hidden>
+          <input type="password" id="gPass" placeholder="Mot de passe" autocomplete="new-password" aria-label="Mot de passe" hidden>
+        </div>
+
+        <button class="btn" id="gSubmit">Commencer</button>
+        <button class="gatelink" id="gSwitch" hidden>J'ai déjà un compte</button>
+
+        <p class="gatenote" id="gateNote">
+          Accès complet, offert pendant le lancement.
+        </p>
+      </div>
+    </div>
 
     <div class="backdrop" id="backdrop"></div>
     <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
@@ -1592,6 +1659,7 @@ function renderProfile(){
     ? "Budget proposé pour " + state.store + ". Chaque enseigne garde le sien."
     : "Budget que tu as fixé pour " + state.store + ".";
 
+  renderCompte();
   renderPromos();
   renderRealPanel();
   renderMealGrid();
@@ -1626,6 +1694,33 @@ function renderProfile(){
     al.appendChild(b);
   });
 }
+
+/* ============ compte ============ */
+const PLANS = {
+  launch: {l:"Lancement", d:"Accès complet, offert."},
+  free:   {l:"Gratuit",   d:"Palier gratuit."},
+  pro:    {l:"Pro",       d:"Abonnement actif."}
+};
+function renderCompte(){
+  const u = auth.user;
+  if(!u){ $("#acctCard").hidden = true; return; }
+  $("#acctCard").hidden = false;
+  $("#acctName").textContent = u.prenom || "Toi";
+  const p = PLANS[auth.plan] || PLANS.launch;
+  $("#acctPlan").textContent = p.l;
+  $("#acctSub").textContent = auth.mode === "supabase"
+    ? (u.email || "") + " · " + p.d
+    : "Profil sur cet appareil · " + p.d;
+}
+$("#acctOut").addEventListener("click", () => {
+  try{ localStorage.removeItem(LS); }catch(e){}
+  auth.user = null; auth.token = null; auth.mode = supaPret() ? "supabase" : "local";
+  auth.inscription = true;
+  majEcranPorte();
+  const g = $("#gate");
+  g.hidden = false; g.classList.remove("out");
+  toast("Déconnecté.");
+});
 
 /* ============ prix relevés : panneau ============ */
 function renderRealPanel(){
@@ -1802,7 +1897,9 @@ function go(name){
   state.screen = name;
   document.querySelectorAll(".screen").forEach(s => { s.hidden = s.id !== "s-" + name; });
   document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.screen === name)));
-  $("#barTitle").textContent = TITLES[name][0];
+  $("#barTitle").textContent = name === "home" && auth.user && auth.user.prenom
+    ? "Bonsoir " + auth.user.prenom
+    : TITLES[name][0];
   $("#barSub").textContent = TITLES[name][1];
   $("#scroll").scrollTop = 0;
 }
@@ -2118,6 +2215,167 @@ $("#realToggle").addEventListener("click", async () => {
   toast(res.ok + (res.ok > 1 ? " prix relevés appliqués." : " prix relevé appliqué."));
 });
 
+/* ============ comptes ============
+   Deux modes, choisis automatiquement.
+
+   Si SUPA est renseigné, l'inscription passe par Supabase : e-mail, mot de
+   passe, et un profil créé côté serveur avec son plan. C'est indispensable pour
+   un plan payant — un plan stocké sur le téléphone se débloque en deux minutes.
+
+   Sinon (ou si le réseau est interdit, comme dans un artifact publié), on
+   retombe sur un profil local : le prénom, rien d'autre. L'app reste utilisable,
+   et l'écran le dit franchement plutôt que de simuler un compte. */
+const SUPA = {
+  url: "",   // ex. https://xxxx.supabase.co
+  key: ""    // clé publiable (anon) — prévue pour vivre dans un client
+};
+const supaPret = () => !!(SUPA.url && SUPA.key);
+
+const auth = {
+  mode: "local",     // "local" | "supabase"
+  user: null,        // { prenom, email }
+  plan: "launch",
+  token: null,
+  inscription: true  // l'écran est-il en mode création ou connexion
+};
+
+const LS = "budgeat.session";
+function sauverSession(){
+  try{ localStorage.setItem(LS, JSON.stringify({
+    mode:auth.mode, user:auth.user, plan:auth.plan, token:auth.token
+  })); }catch(e){}
+}
+function lireSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem(LS) || "null");
+    if(s && s.user){ Object.assign(auth, s); return true; }
+  }catch(e){}
+  return false;
+}
+
+async function supaAppel(chemin, corps){
+  const res = await fetch(SUPA.url + chemin, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", apikey:SUPA.key },
+    body:JSON.stringify(corps)
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok){
+    throw new Error(data.msg || data.error_description || data.message || ("HTTP " + res.status));
+  }
+  return data;
+}
+
+/* Le plan fait foi côté serveur : on le relit, on ne le déduit jamais. */
+async function lirePlan(token){
+  try{
+    const res = await fetch(SUPA.url + "/rest/v1/profiles?select=plan,prenom", {
+      headers:{ apikey:SUPA.key, Authorization:"Bearer " + token }
+    });
+    const rows = await res.json();
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }catch(e){ return null; }
+}
+
+function majEcranPorte(){
+  const supa = supaPret();
+  $("#gEmail").hidden = !supa;
+  $("#gPass").hidden = !supa;
+  $("#gSwitch").hidden = !supa;
+  $("#gPrenom").hidden = supa && !auth.inscription;
+
+  if(!supa){
+    $("#gateTitle").textContent = "Tes dîners, pile dans ton budget";
+    $("#gateLede").textContent = "Deux minutes pour ton premier menu.";
+    $("#gSubmit").textContent = "Commencer";
+    $("#gateNote").textContent =
+      "Profil enregistré sur cet appareil. Accès complet, offert pendant le lancement.";
+    return;
+  }
+  $("#gateTitle").textContent = auth.inscription
+    ? "Crée ton compte Budgeat" : "Content de te revoir";
+  $("#gateLede").textContent = auth.inscription
+    ? "Accès immédiat, sans attendre de confirmation."
+    : "Connecte-toi pour retrouver ta semaine.";
+  $("#gSubmit").textContent = auth.inscription ? "Créer mon compte" : "Me connecter";
+  $("#gSwitch").textContent = auth.inscription
+    ? "J'ai déjà un compte" : "Créer un compte";
+  $("#gateNote").textContent = auth.inscription
+    ? "Accès complet, offert pendant le lancement. Aucun paiement demandé."
+    : "";
+}
+
+function ouvrirApp(){
+  const g = $("#gate");
+  g.classList.add("out");
+  setTimeout(() => { g.hidden = true; }, 320);
+  renderAll();
+  go("home");
+}
+
+$("#gSwitch").addEventListener("click", () => {
+  auth.inscription = !auth.inscription;
+  majEcranPorte();
+});
+
+$("#gSubmit").addEventListener("click", async () => {
+  const prenom = $("#gPrenom").value.trim();
+  const btn = $("#gSubmit");
+
+  // Mode local : un prénom suffit, et on le dit.
+  if(!supaPret()){
+    if(!prenom){ toast("Dis-moi au moins ton prénom."); return; }
+    auth.mode = "local";
+    auth.user = {prenom, email:null};
+    auth.plan = "launch";
+    sauverSession();
+    ouvrirApp();
+    return;
+  }
+
+  const email = $("#gEmail").value.trim();
+  const pass = $("#gPass").value;
+  if(!email || !pass){ toast("E-mail et mot de passe sont nécessaires."); return; }
+  if(auth.inscription && !prenom){ toast("Dis-moi ton prénom."); return; }
+
+  btn.disabled = true;
+  const libelle = btn.textContent;
+  btn.textContent = "…";
+  try{
+    let session;
+    if(auth.inscription){
+      session = await supaAppel("/auth/v1/signup",
+        {email, password:pass, data:{prenom}});
+      // Sans confirmation d'e-mail, Supabase renvoie directement une session.
+      if(!session.access_token){
+        session = await supaAppel("/auth/v1/token?grant_type=password", {email, password:pass});
+      }
+    } else {
+      session = await supaAppel("/auth/v1/token?grant_type=password", {email, password:pass});
+    }
+    auth.mode = "supabase";
+    auth.token = session.access_token;
+    const profil = await lirePlan(auth.token);
+    auth.user = {prenom: (profil && profil.prenom) || prenom, email};
+    auth.plan = (profil && profil.plan) || "launch";
+    sauverSession();
+    ouvrirApp();
+    toast("Bienvenue, " + (auth.user.prenom || "") + ".");
+  }catch(e){
+    const m = String(e.message || "");
+    toast(/already registered|User already/i.test(m)
+      ? "Cet e-mail a déjà un compte. Connecte-toi."
+      : /Invalid login/i.test(m)
+        ? "E-mail ou mot de passe incorrect."
+        : /Failed to fetch|NetworkError/i.test(m)
+          ? "Pas de réseau ici. Cette inscription fonctionne dans l'app Android."
+          : "Inscription impossible : " + m);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = libelle;
+  }
+});
+
 /* ============ app installée ============ */
 // Le pont n'existe que dans l'APK ; dans un navigateur, la carte reste cachée.
 if(window.BudgeatApp){
@@ -2141,6 +2399,8 @@ setInterval(clock, 20000);
 
 /* ============ démarrage ============ */
 state.menu = buildMenu().menu;
+majEcranPorte();
+if(lireSession()){ $("#gate").hidden = true; }
 renderAll();
 go("home");
 })();

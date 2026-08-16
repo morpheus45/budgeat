@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#14593A</color>
+    <!-- Fond de l'icône : le crème de la marque. Il se distingue mal d'un fond
+         d'écran très clair ; passer à @color/brand_deep si le cas se pose. -->
+    <color name="ic_launcher_background">#FDFBF4</color>
     <color name="brand_deep">#14593A</color>
     <color name="cream">#FDFBF4</color>
 
