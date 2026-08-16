@@ -1,6 +1,6 @@
-# Sorties de build
+# Sorties de build : l'APK se récupère depuis les releases, pas depuis le dépôt.
 build/
-budgeat.apk
+*.apk
 *.apk.idsig
 
 # Matériel de signature : ne doit jamais être versionné.
