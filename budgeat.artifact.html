@@ -1205,6 +1205,7 @@ const state = {
   // { id, marque, nom, ville, pays, lat, lon, prix }
   magasin:null,
   lieux:[],        // catalogue des magasins connus de la base, mis en cache
+  lieuxComplet:false,  // le parcours des 69 pages est-il allé au bout
   // Prix relevés par toi en rayon : { Lidl: { "Poulet fermier": {perKg} } }
   prix:{},
   real:{},
@@ -1413,7 +1414,11 @@ const MAGASIN_LS = "budgeat.magasin";
 function sauverMagasin(){
   try{
     localStorage.setItem(MAGASIN_LS, JSON.stringify(state.magasin));
-    localStorage.setItem(LIEUX_LS, JSON.stringify({t:Date.now(), l:state.lieux.slice(0, 900)}));
+    if(state.lieux.length){
+      localStorage.setItem(LIEUX_LS, JSON.stringify({
+        t:Date.now(), complet:!!state.lieuxComplet, l:state.lieux
+      }));
+    }
   }catch(e){}
 }
 function lireMagasin(){
@@ -1421,7 +1426,11 @@ function lireMagasin(){
     state.magasin = JSON.parse(localStorage.getItem(MAGASIN_LS) || "null");
     const c = JSON.parse(localStorage.getItem(LIEUX_LS) || "null");
     // Un catalogue de magasins vieux d'une semaine reste bon.
-    if(c && c.l && Date.now() - c.t < 7 * 864e5) state.lieux = c.l;
+    // Un catalogue partiel sert à afficher tout de suite ; il sera complété.
+    if(c && c.l && Date.now() - c.t < 7 * 864e5){
+      state.lieux = c.l;
+      state.lieuxComplet = !!c.complet;
+    }
   }catch(e){}
 }
 
@@ -1434,27 +1443,48 @@ function lireMagasin(){
    en prévenant l'appelant à chaque page pour que la liste s'affiche et se
    raffine sans attendre la fin. Gardé une semaine : ce catalogue ne bouge pas. */
 async function chargerLieux(onAvance){
-  if(state.lieux.length) return state.lieux;
-  const out = [];
-  for(let page = 1; page <= 69; page++){
-    const r = await fetch(`${OFF_LIEUX}?size=100&page=${page}&order_by=-price_count`,
-                          {headers:{Accept:"application/json"}});
-    if(!r.ok) break;
-    const j = await r.json();
-    if(!j.items || !j.items.length) break;
-    out.push(...j.items
+  // Un catalogue partiel doit être repris, pas resservi tel quel.
+  if(state.lieux.length && state.lieuxComplet) return state.lieux;
+
+  const PAGES = 69, LOT = 4;
+  const brut = [];
+  let echecs = 0;
+
+  // Quatre requêtes de front : au-delà, l'API en refuse une partie. Et une page
+  // perdue en silence produirait un catalogue troué qu'on croirait complet —
+  // c'est ainsi que les magasins d'une région entière disparaissent.
+  const page = async p => {
+    for(let essai = 0; essai < 2; essai++){
+      try{
+        const r = await fetch(`${OFF_LIEUX}?size=100&page=${p}&order_by=-price_count`,
+                              {headers:{Accept:"application/json"}});
+        if(r.ok) return await r.json();
+      }catch(e){ /* on retente une fois */ }
+    }
+    echecs++;
+    return null;
+  };
+
+  for(let base = 1; base <= PAGES; base += LOT){
+    const lot = [];
+    for(let p = base; p < base + LOT && p <= PAGES; p++) lot.push(page(p));
+    (await Promise.all(lot)).forEach(j => { if(j && j.items) brut.push(...j.items); });
+
+    state.lieux = brut
       .filter(l => l.osm_lat != null)
       .map(l => ({
         id:l.id, marque:l.osm_brand || l.osm_name || "?", nom:l.osm_name || l.osm_brand || "?",
         ville:l.osm_address_city || "", pays:l.osm_address_country_code || "",
         lat:l.osm_lat, lon:l.osm_lon, prix:l.price_count || 0
-      })));
-    state.lieux = out;
-    if(onAvance) onAvance(out, page);
+      }));
+    sauverMagasin();
+    if(onAvance) onAvance(state.lieux, Math.min(base + LOT - 1, PAGES), echecs);
   }
-  state.lieux = out;
+
+  // Complet seulement si AUCUNE page n'a manqué.
+  state.lieuxComplet = echecs === 0;
   sauverMagasin();
-  return out;
+  return state.lieux;
 }
 
 /* Distance à vol d'oiseau, suffisante pour trier des magasins. */
@@ -1513,7 +1543,7 @@ async function loadRealPrices(){
       let retenus = [], source = null, datee = false;
 
       // 1. Ton magasin exactement.
-      if(mag){
+      if(mag && mag.id){
         const r1 = await fetch(`${OFF_API}?location_id=${mag.id}&category_tag=${cat}&size=100&order_by=-date`,
                                {headers:{Accept:"application/json"}});
         if(r1.ok){
@@ -2201,7 +2231,8 @@ function renderMagasin(){
   const m = state.magasin;
   $("#magActuel").innerHTML = m
     ? '<b style="color:var(--ink)">' + m.marque + '</b> · ' + (m.ville || nomPays(m.pays)) +
-      ' <span style="color:var(--faint)">· ' + m.prix + ' prix relevés</span>'
+      ' <span style="color:var(--faint)">· ' +
+      (m.perso ? "déclaré par toi, prix de l'enseigne" : m.prix + " prix relevés") + '</span>'
     : "Aucun magasin choisi : les prix retombent sur la moyenne du pays.";
 }
 
@@ -2227,11 +2258,16 @@ async function ouvrirChoixMagasin(position, demanderPosition){
       body.appendChild(liste);
 
       let lieux = state.lieux.slice();
-      const progression = (recus, page) => {
+      let manquantes = 0;
+      const progression = (recus, page, echecs) => {
         lieux = recus;
-        etat.textContent = "Chargement des magasins… " + recus.length +
-                           " sur ~6800 (page " + page + "/69)";
+        manquantes = echecs || 0;
         dessiner();
+        if(page < 69){
+          etat.textContent = "Chargement… " + recus.length + " magasins sur ~6800. " +
+            "Les magasins les moins documentés arrivent en dernier.";
+          etat.style.color = "var(--muted)";
+        }
       };
       try{
         lieux = await chargerLieux(progression);
@@ -2257,7 +2293,10 @@ async function ouvrirChoixMagasin(position, demanderPosition){
           const d = vus[0].km;
           etat.textContent = "Du plus proche au plus loin · le premier est à " +
             (d < 10 ? d.toFixed(1) : Math.round(d)) + " km" +
-            (d > 25 ? ". Aucun magasin relevé plus près de chez toi." : "");
+            (d > 12
+              ? ". Personne n'a relevé de prix plus près de chez toi : ajoute ton magasin ci-dessous."
+              : "");
+          etat.style.color = d > 12 ? "var(--coral)" : "var(--muted)";
         } else {
           etat.textContent = sel.length + " magasins trouvés · les mieux fournis d'abord";
         }
@@ -2290,6 +2329,53 @@ async function ouvrirChoixMagasin(position, demanderPosition){
 
       rech.addEventListener("input", dessiner);
       dessiner();
+
+      /* Beaucoup de communes n'ont aucun relevé — Pézenas et Saint-Thibéry n'en
+         ont aucun, le plus proche est à 15 km. Plutôt que d'imposer un magasin
+         lointain, on laisse déclarer le sien : les prix y viennent du profil de
+         l'enseigne, et tes corrections en rayon les remplacent une à une. */
+      const sep = el("div");
+      sep.style.cssText = "border-top:1px solid var(--line);padding-top:14px;margin-top:4px;display:flex;flex-direction:column;gap:9px";
+      const titre = el("div");
+      titre.style.cssText = "font-weight:800;font-size:14px";
+      titre.textContent = "Ton magasin n'est pas dans la liste ?";
+      const expl = el("div");
+      expl.style.cssText = "font-size:12.5px;color:var(--muted);font-weight:600";
+      expl.textContent = "Déclare-le. Les prix partiront de ceux de l'enseigne, et tes relevés en rayon les corrigeront.";
+
+      const ligne = el("div", "addrow");
+      const selEns = el("select");
+      selEns.setAttribute("aria-label", "Enseigne");
+      STORES.forEach(st => {
+        const o = el("option");
+        o.value = st.n; o.textContent = st.n;
+        selEns.appendChild(o);
+      });
+      selEns.value = state.store;
+      const ville = el("input");
+      ville.type = "text";
+      ville.placeholder = "Ta ville";
+      ville.setAttribute("aria-label", "Ville du magasin");
+      ligne.append(selEns, ville);
+
+      const ajouter = el("button", "btn slim");
+      ajouter.style.width = "100%";
+      ajouter.textContent = "Ajouter ce magasin";
+      ajouter.addEventListener("click", () => {
+        const v = ville.value.trim();
+        if(!v){ toast("Indique la ville."); return; }
+        state.magasin = {id:null, marque:selEns.value, nom:selEns.value + " " + v,
+                         ville:v, pays:"FR", lat:null, lon:null, prix:0, perso:true};
+        state.store = selEns.value;
+        state.real = {};
+        sauverMagasin();
+        closeSheet();
+        renderAll();
+        toast(selEns.value + " " + v + " ajouté. Corrige les prix en rayon au fil de tes courses.");
+      });
+
+      sep.append(titre, expl, ligne, ajouter);
+      body.appendChild(sep);
 
       // La géolocalisation vient enrichir une liste déjà affichée.
       if(demanderPosition){
