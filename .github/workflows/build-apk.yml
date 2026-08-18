@@ -39,7 +39,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > budgeat.keystore
+            echo "$KEYSTORE_BASE64" | base64 -d > luma.keystore
             echo "mode=release" >> "$GITHUB_OUTPUT"
             echo "Clé de release restaurée depuis les secrets."
           else
@@ -62,12 +62,12 @@ jobs:
       - name: Vérifier la signature et le contenu
         run: |
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -1)"
-          "$BT/apksigner" verify --print-certs budgeat.apk
-          BADGING=$("$BT/aapt" dump badging budgeat.apk)
+          "$BT/apksigner" verify --print-certs luma.apk
+          BADGING=$("$BT/aapt" dump badging luma.apk)
           echo "$BADGING" | grep -E "^(package|application-label|sdkVersion|targetSdkVersion)"
 
           # L'interface doit être embarquée : sans elle l'app démarre sur une page blanche.
-          "$BT/aapt" list budgeat.apk | grep -q "^assets/budgeat.html$" \
+          "$BT/aapt" list luma.apk | grep -q "^assets/budgeat.html$" \
             && echo "asset budgeat.html présent" \
             || { echo "asset budgeat.html MANQUANT"; exit 1; }
 
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: budgeat-apk-${{ github.run_number }}
-          path: budgeat.apk
+          path: luma.apk
           if-no-files-found: error
 
       - name: Publier sur la release
@@ -90,7 +90,11 @@ jobs:
           TAG: ${{ github.ref_name }}
           MODE: ${{ steps.signing.outputs.mode }}
         run: |
-          gh release upload "$TAG" budgeat.apk --clobber \
-            || gh release create "$TAG" budgeat.apk \
-                 --title "Budgeat ${TAG#v}" \
-                 --notes "APK construit par CI (signature : $MODE)."
+          # Les versions installees avant le renommage cherchent un fichier nomme
+          # exactement budgeat.apk. On publie le meme APK sous les deux noms, le
+          # temps que le parc bascule sur une version acceptant tout fichier .apk.
+          cp luma.apk budgeat.apk
+          gh release create "$TAG" luma.apk budgeat.apk \
+               --title "Luma ${TAG#v}" \
+               --notes "APK construit par CI (signature : $MODE)." \
+            || gh release upload "$TAG" luma.apk budgeat.apk --clobber

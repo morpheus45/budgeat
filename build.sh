@@ -24,7 +24,7 @@ VERSION_CODE="${VERSION_CODE:-1}"
 VERSION_NAME="${VERSION_NAME:-1.0}"
 
 # Signature : surchargeable pour que le CI injecte la vraie clé.
-KS="${KEYSTORE_FILE:-budgeat.keystore}"
+KS="${KEYSTORE_FILE:-luma.keystore}"
 KS_PASS="${KEYSTORE_PASSWORD:-budgeat}"
 KS_ALIAS="${KEY_ALIAS:-budgeat}"
 KEY_PASS="${KEY_PASSWORD:-$KS_PASS}"
@@ -80,13 +80,13 @@ if [ ! -f "$KS" ]; then
   keytool -genkeypair -keystore "$KS" -alias "$KS_ALIAS" \
     -storepass "$KS_PASS" -keypass "$KEY_PASS" \
     -keyalg RSA -keysize 2048 -validity 10000 \
-    -dname "CN=Budgeat, O=Perso, C=FR" >/dev/null 2>&1
+    -dname "CN=Luma, O=Perso, C=FR" >/dev/null 2>&1
 fi
 "$APKSIGNER" sign \
   --ks "$KS" --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
   --ks-key-alias "$KS_ALIAS" \
-  --out budgeat.apk "$OUT/app.aligned.apk"
+  --out luma.apk "$OUT/app.aligned.apk"
 
-"$APKSIGNER" verify --print-certs budgeat.apk | head -4
-ls -la budgeat.apk
-echo "==> budgeat.apk prêt"
+"$APKSIGNER" verify --print-certs luma.apk | head -4
+ls -la luma.apk
+echo "==> luma.apk prêt"

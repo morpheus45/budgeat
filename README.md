@@ -1,6 +1,6 @@
-# Budgeat — APK
+# Luma — APK
 
-App Android qui embarque l'interface Budgeat dans une WebView. Tout est local :
+App Android qui embarque l'interface Luma dans une WebView. Tout est local :
 la page est un asset de l'APK, l'app ne déclare **aucune permission** et n'ouvre
 aucune connexion réseau.
 
@@ -10,7 +10,7 @@ aucune connexion réseau.
 bash build.sh
 ```
 
-Produit `budgeat.apk` à la racine du dossier.
+Produit `luma.apk` à la racine du dossier.
 
 Pas de Gradle : le script enchaîne directement les outils du SDK
 (`aapt2 compile` → `aapt2 link` → `javac` → `d8` → `zipalign` → `apksigner`).
@@ -38,10 +38,25 @@ barre d'état, qui feraient doublon avec l'appareil réel.
 
 `build.sh` relance cette génération à chaque build.
 
+## Renommage : ce qui n'a pas bougé, et pourquoi
+
+L'app s'appelait Budgeat. Trois identifiants sont restés inchangés, volontairement :
+
+- **`app.budgeat`**, l'identifiant de paquet. En changer ferait une app *nouvelle*
+  aux yeux d'Android : plus de mise à jour, deux icônes côte à côte.
+- **Les clés `budgeat.*` du stockage local.** Les renommer effacerait le magasin
+  choisi, les promos saisies et l'historique de pesées.
+- **La clé de signature.** Le fichier s'appelle désormais `luma.keystore`, mais
+  c'est le même keystore renommé : Android refuse toute mise à jour signée
+  autrement.
+
+Les releases publient l'APK sous `luma.apk` **et** `budgeat.apk` : les versions
+installées avant le renommage cherchent l'ancien nom.
+
 ## Signature
 
-Le keystore `budgeat.keystore` est créé au premier build (mot de passe `budgeat`,
-`CN=Budgeat`). C'est une signature auto-générée pour installation perso — elle
+Le keystore `luma.keystore` est créé au premier build (mot de passe `budgeat`,
+`CN=Luma`). C'est une signature auto-générée pour installation perso — elle
 n'a rien à voir avec les certificats de release de PIPSILY ou gsystem, et cet APK
 n'a pas vocation à être publié sur un store.
 
@@ -71,7 +86,7 @@ détail, recalibrées le 17 août 2026. Elles restent des estimations et peuvent
 ## Mise à jour depuis GitHub
 
 Depuis la 1.3, l'app interroge elle-même
-`api.github.com/repos/morpheus45/budgeat/releases/latest` au lancement, et propose
+`api.github.com/repos/morpheus45/luma/releases/latest` au lancement, et propose
 la nouvelle version si le tag est supérieur au `versionName` installé. Le
 téléchargement passe par `DownloadManager`, qui fournit une URI `content://`
 directement utilisable par l'installateur — d'où l'absence de `FileProvider`.

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="light dark">
-<title>Budgeat</title>
+<title>Luma</title>
 <style>
   /* Sur un vrai téléphone, le cadre de simulation et la fausse barre d'état
      feraient doublon avec l'appareil. On les retire à toutes les largeurs,
@@ -596,10 +596,10 @@ input[type=range]::-moz-range-thumb{
         <path d="M10 12h14M10 17h14M10 22h9" stroke="#8FE9BC" stroke-width="2.4" stroke-linecap="round"/>
         <circle cx="24.5" cy="22" r="3.2" fill="#FFD23F"/>
       </svg>
-      <span style="font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:-.4px">Budgeat</span>
+      <span style="font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:-.4px">Luma</span>
     </div>
     <h1>Tes dîners de la semaine, pile dans ton budget.</h1>
-    <p>Tu choisis ton magasin et ton budget. Budgeat connaît les prix de 13 enseignes et compose tes cinq dîners, liste de courses comprise.</p>
+    <p>Tu choisis ton magasin et ton budget. Luma connaît les prix de 13 enseignes et compose tes cinq dîners, liste de courses comprise.</p>
     <ul class="hints">
       <li><span class="kbd">1</span><span><b>Créer mon menu</b> ouvre le réglage budget, enseigne et régime.</span></li>
       <li><span class="kbd">2</span><span>Sur <b>Semaine</b>, le bouton ↻ remplace un dîner sans sortir du budget.</span></li>
@@ -607,7 +607,7 @@ input[type=range]::-moz-range-thumb{
     </ul>
   </aside>
 
-  <div class="device" role="application" aria-label="Budgeat, application mobile">
+  <div class="device" role="application" aria-label="Luma, application mobile">
 
     <div class="statusbar">
       <span class="tnum" id="clock">20:41</span>
@@ -766,7 +766,7 @@ input[type=range]::-moz-range-thumb{
         <div class="card field">
           <label>Promos de la semaine</label>
           <div style="font-size:12.5px;color:var(--muted);font-weight:600;margin-top:-2px">
-            Saisis ce que tu vois dans le catalogue de ton enseigne. Budgeat oriente
+            Saisis ce que tu vois dans le catalogue de ton enseigne. Luma oriente
             les menus dessus et déduit la remise de la liste.
           </div>
           <div class="addrow">
@@ -901,7 +901,7 @@ input[type=range]::-moz-range-thumb{
           <label>Application</label>
           <div style="display:flex;align-items:center;gap:12px">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:800;font-size:15px">Budgeat <span id="appVersion">—</span></div>
+              <div style="font-weight:800;font-size:15px">Luma <span id="appVersion">—</span></div>
               <div style="font-size:12px;color:var(--faint);font-weight:700">Mises à jour publiées sur GitHub</div>
             </div>
             <button class="btn slim soft" id="checkUpdate">Vérifier</button>
@@ -1358,7 +1358,7 @@ function menuTotal(){
 }
 
 /* Budget : une valeur par enseigne. Tant que tu n'y as pas touché,
-   Budgeat propose un budget calé sur le niveau de prix de l'enseigne. */
+   Luma propose un budget calé sur le niveau de prix de l'enseigne. */
 function suggestedBudget(storeName){
   return Math.round(52 * storeBy(storeName).i * scale() / 5) * 5;
 }
@@ -3192,7 +3192,7 @@ function majEcranPorte(){
     return;
   }
   $("#gateTitle").textContent = auth.inscription
-    ? "Crée ton compte Budgeat" : "Content de te revoir";
+    ? "Crée ton compte Luma" : "Content de te revoir";
   $("#gateLede").textContent = auth.inscription
     ? "Accès immédiat, sans attendre de confirmation."
     : "Connecte-toi pour retrouver ta semaine.";

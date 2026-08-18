@@ -32,8 +32,7 @@ import java.net.URL;
 class Updater {
 
     private static final String API =
-        "https://api.github.com/repos/morpheus45/budgeat/releases/latest";
-    private static final String ASSET = "budgeat.apk";
+        "https://api.github.com/repos/morpheus45/luma/releases/latest";
 
     private final Activity act;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -59,7 +58,7 @@ class Updater {
                         return;
                     }
                     if (compare(tag, actuelle) <= 0) {
-                        if (!silencieux) toast("Budgeat " + actuelle + " est à jour.");
+                        if (!silencieux) toast("Luma " + actuelle + " est à jour.");
                         return;
                     }
                     ui.post(new Runnable() {
@@ -76,7 +75,7 @@ class Updater {
         HttpURLConnection c = (HttpURLConnection) new URL(API).openConnection();
         c.setRequestProperty("Accept", "application/vnd.github+json");
         // GitHub rejette les requêtes sans User-Agent.
-        c.setRequestProperty("User-Agent", "Budgeat-Android");
+        c.setRequestProperty("User-Agent", "Luma-Android");
         c.setConnectTimeout(12000);
         c.setReadTimeout(12000);
         try {
@@ -91,12 +90,19 @@ class Updater {
         }
     }
 
+    /**
+     * On accepte n'importe quel APK de la release plutôt qu'un nom figé : le
+     * fichier s'est déjà appelé budgeat.apk, il s'appelle luma.apk, et un nom
+     * codé en dur casserait la mise à jour au prochain changement.
+     */
     private String assetUrl(JSONObject release) {
         JSONArray assets = release.optJSONArray("assets");
         if (assets == null) return null;
         for (int i = 0; i < assets.length(); i++) {
             JSONObject a = assets.optJSONObject(i);
-            if (a != null && ASSET.equals(a.optString("name"))) {
+            if (a == null) continue;
+            String nom = a.optString("name", "");
+            if (nom.toLowerCase().endsWith(".apk")) {
                 return a.optString("browser_download_url", null);
             }
         }
@@ -136,7 +142,7 @@ class Updater {
         if (resume.length() > 400) resume = resume.substring(0, 400) + "…";
 
         new AlertDialog.Builder(act)
-            .setTitle("Budgeat " + version + " est disponible")
+            .setTitle("Luma " + version + " est disponible")
             .setMessage(resume.isEmpty()
                 ? "Tu as la version " + versionInstallee() + "."
                 : resume + "\n\nTu as la version " + versionInstallee() + ".")
@@ -151,7 +157,7 @@ class Updater {
                 && !act.getPackageManager().canRequestPackageInstalls()) {
             new AlertDialog.Builder(act)
                 .setTitle("Autorisation requise")
-                .setMessage("Android demande ton accord pour que Budgeat puisse installer "
+                .setMessage("Android demande ton accord pour que Luma puisse installer "
                           + "ses propres mises à jour. Active « Autoriser depuis cette source », "
                           + "puis relance le téléchargement.")
                 .setPositiveButton("Ouvrir les réglages", (d, w) -> {
@@ -170,17 +176,17 @@ class Updater {
         try {
             DownloadManager dm = (DownloadManager) act.getSystemService(Context.DOWNLOAD_SERVICE);
             DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
-            req.setTitle("Budgeat " + version);
+            req.setTitle("Luma " + version);
             req.setDescription("Téléchargement de la mise à jour");
             req.setMimeType("application/vnd.android.package-archive");
             req.setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             // Dossier privé de l'app : aucune permission de stockage nécessaire.
             req.setDestinationInExternalFilesDir(
-                act, Environment.DIRECTORY_DOWNLOADS, "budgeat-" + version + ".apk");
+                act, Environment.DIRECTORY_DOWNLOADS, "luma-" + version + ".apk");
 
             final long id = dm.enqueue(req);
-            toast("Téléchargement de Budgeat " + version + "…");
+            toast("Téléchargement de Luma " + version + "…");
 
             receiver = new BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
