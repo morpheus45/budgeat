@@ -807,6 +807,46 @@ input[type=range]::-moz-range-thumb{
           <div id="legerDetail" style="font-size:12px;color:var(--faint);font-weight:700"></div>
         </div>
 
+        <div class="card field" id="poidsCard" hidden>
+          <label>Ton suivi</label>
+          <div class="grid2">
+            <button class="opt" id="sexeH" type="button" aria-pressed="true">Homme</button>
+            <button class="opt" id="sexeF" type="button" aria-pressed="false">Femme</button>
+          </div>
+          <div class="addrow">
+            <input type="number" id="pAge" placeholder="Âge" aria-label="Âge" min="14" max="100">
+            <input type="number" id="pTaille" placeholder="Taille cm" aria-label="Taille en centimètres" min="120" max="230">
+          </div>
+          <div class="addrow">
+            <input type="number" id="pPoids" placeholder="Poids kg" aria-label="Poids actuel en kilos" min="35" max="300" step="0.1">
+            <input type="number" id="pObjectif" placeholder="Objectif kg" aria-label="Poids visé en kilos" min="35" max="300" step="0.1">
+          </div>
+          <select id="pActivite" aria-label="Niveau d'activité"></select>
+          <button class="btn slim" id="pCalculer" style="width:100%">Calculer ma cible</button>
+
+          <div id="imcBox" hidden style="display:flex;flex-direction:column;gap:10px">
+            <div class="meter"><i id="imcMeter" style="width:0%"></i></div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <span style="font-family:var(--display);font-weight:800;font-size:27px;letter-spacing:-.6px" class="tnum" id="imcVal">—</span>
+              <span class="pill" id="imcCat">—</span>
+            </div>
+            <div style="font-size:12.5px;font-weight:700;color:var(--muted)" id="cibleTxt"></div>
+            <div style="font-size:12px;font-weight:700;color:var(--faint)" id="plafondTxt"></div>
+          </div>
+        </div>
+
+        <div class="card field" id="peseeCard" hidden>
+          <label>Pesée de la semaine</label>
+          <div style="font-size:12.5px;color:var(--muted);font-weight:600;margin-top:-2px">
+            Une fois par semaine, à jeun. La cible se réajuste sur ce que tu perds vraiment.
+          </div>
+          <div class="addrow">
+            <input type="number" id="peseeKg" placeholder="Poids du jour" aria-label="Poids du jour" min="35" max="300" step="0.1">
+            <button class="btn slim" id="peseeAdd" style="height:46px">Enregistrer</button>
+          </div>
+          <div id="peseeHist"></div>
+        </div>
+
         <div class="card field">
           <label>Ton régime</label>
           <div class="grid2" id="dietOpts"></div>
@@ -1136,6 +1176,11 @@ const state = {
   slots:{},
   // Repas légers : plafond calorique par portion, priorité aux protéines.
   leger:false,
+  // { sexe, age, taille (cm), poids (kg), objectif (kg), activite }
+  profil:null,
+  poids:[],          // pesées : [{date, kg}]
+  ajustement:0,      // correction cumulée issue des pesées
+  refAjust:null,     // pesée servant de référence au prochain réajustement
   // Promos saisies depuis le catalogue : { ing, pct, store }
   promos:[],
   // Prix relevés en ligne : { "Carottes": {perKg, date, n} }
@@ -1521,6 +1566,136 @@ function compareStores(){
 }
 /* Sous-titre d'un bouton enseigne : ce que TA semaine y coûte, pas une étiquette générique. */
 const storeSubtitle = name => state.menu.length ? eur(weekAt(name)) : "—";
+/* ============ poids, IMC et besoin calorique ============
+
+   Formules établies, pas d'estimation maison :
+   - IMC = poids / taille², seuils OMS.
+   - Métabolisme de base par Mifflin-St Jeor, la référence actuelle.
+   - Besoin total = métabolisme × niveau d'activité.
+   - Perte durable = 500 kcal de déficit, soit environ 0,5 kg par semaine.
+
+   Les garde-fous comptent autant que les formules : jamais sous le
+   métabolisme de base, jamais sous 1500 kcal (homme) ou 1200 (femme), et
+   aucun déficit proposé sous un IMC de 18,5. */
+
+const ACTIVITES = [
+  {k:"sedentaire", l:"Sédentaire",  f:1.20, d:"bureau, peu de marche"},
+  {k:"leger",      l:"Peu actif",   f:1.375, d:"marche, 1 à 2 séances"},
+  {k:"modere",     l:"Actif",       f:1.55, d:"3 à 5 séances"},
+  {k:"intense",    l:"Très actif",  f:1.725, d:"sport quotidien"}
+];
+
+const imc = (kg, cm) => (cm > 0 ? kg / Math.pow(cm / 100, 2) : 0);
+
+function categorieIMC(v){
+  if(v < 18.5) return {l:"Insuffisance pondérale", alerte:true};
+  if(v < 25)   return {l:"Corpulence normale", alerte:false};
+  if(v < 30)   return {l:"Surpoids", alerte:false};
+  if(v < 35)   return {l:"Obésité modérée", alerte:false};
+  if(v < 40)   return {l:"Obésité sévère", alerte:false};
+  return {l:"Obésité massive", alerte:false};
+}
+
+/* Mifflin-St Jeor */
+function metabolismeBase(p){
+  if(!p || !p.poids || !p.taille || !p.age) return 0;
+  const base = 10 * p.poids + 6.25 * p.taille - 5 * p.age;
+  return Math.round(p.sexe === "f" ? base - 161 : base + 5);
+}
+
+function besoinTotal(p){
+  const act = ACTIVITES.find(a => a.k === (p && p.activite)) || ACTIVITES[0];
+  return Math.round(metabolismeBase(p) * act.f);
+}
+
+/* Plancher de sécurité : en dessous, on ne descend pas, quoi qu'il arrive. */
+function plancherKcal(p){
+  const mb = metabolismeBase(p);
+  const absolu = (p && p.sexe === "f") ? 1200 : 1500;
+  return Math.max(Math.round(mb * 0.95), absolu);
+}
+
+/* Cible du jour : le déficit, borné, et jamais proposé sous un IMC de 18,5. */
+function cibleJour(){
+  const p = state.profil;
+  if(!p || !p.poids || !p.taille || !p.age) return null;
+  const tdee = besoinTotal(p);
+  const v = imc(p.poids, p.taille);
+  if(v < 18.5) return {kcal:tdee, mode:"maintien", raison:"IMC sous 18,5"};
+  if(p.objectif && p.poids <= p.objectif) return {kcal:tdee, mode:"maintien", raison:"objectif atteint"};
+
+  const plancher = plancherKcal(p);
+  const vise = tdee - 500 + (state.ajustement || 0);
+  if(vise < plancher) return {kcal:plancher, mode:"plancher", raison:"déficit borné par le plancher de sécurité"};
+  return {kcal:Math.round(vise), mode:"deficit", raison:null};
+}
+
+/* Part de la journée que représentent les repas planifiés. Le reste — petit
+   déjeuner, en-cas — n'est pas géré par l'app, donc pas dilapidé non plus. */
+const PART_REPAS = {midi:0.30, soir:0.35};
+
+function plafondRepas(meal){
+  const c = cibleJour();
+  if(!c) return LEGER_KCAL;
+  return Math.round(c.kcal * (PART_REPAS[meal] || 0.35));
+}
+
+/* Réajustement hebdomadaire, sur la pesée réelle et non sur la théorie.
+   Trop vite : on remonte, parce qu'une fonte rapide se reprend. Trop lent :
+   on descend d'un cran, sans jamais franchir le plancher. */
+const JOURS_ENTRE_AJUSTS = 5;
+
+function reajuster(){
+  const h = state.poids;
+  if(h.length < 2) return {texte:"Pesée enregistrée. La deuxième permettra de réajuster.", delta:0};
+  const dernier = h[h.length - 1];
+
+  // On compare à la pesée qui a servi au dernier réajustement, pas à la
+  // précédente : sinon deux pesées rapprochées extrapolent n'importe quoi.
+  const ref = state.poids.find(w => w.date === state.refAjust) || h[0];
+  const jours = (Date.parse(dernier.date) - Date.parse(ref.date)) / 864e5;
+
+  if(jours < JOURS_ENTRE_AJUSTS){
+    const reste = Math.max(1, Math.ceil(JOURS_ENTRE_AJUSTS - jours));
+    return {
+      texte:"Pesée enregistrée. Le réajustement se fait une fois par semaine — encore " +
+            reste + (reste > 1 ? " jours." : " jour."),
+      delta:0
+    };
+  }
+  state.refAjust = dernier.date;
+  const parSemaine = (dernier.kg - ref.kg) * 7 / jours;
+
+  const p = state.profil;
+  if(p) p.poids = dernier.kg;
+
+  const c0 = cibleJour();
+  if(c0 && c0.mode === "maintien"){
+    return {texte:"Maintien : aucun déficit appliqué.", delta:0, parSemaine};
+  }
+
+  let delta = 0, texte;
+  if(parSemaine <= -1.0){
+    delta = 150;
+    texte = "Perte trop rapide (" + parSemaine.toFixed(1) + " kg/sem) : +150 kcal par jour.";
+  } else if(parSemaine >= -0.2){
+    delta = -150;
+    texte = "Perte trop lente (" + parSemaine.toFixed(1) + " kg/sem) : −150 kcal par jour.";
+  } else {
+    texte = "Rythme tenable (" + parSemaine.toFixed(1) + " kg/sem) : cible inchangée.";
+  }
+
+  const avantAjust = state.ajustement || 0;
+  state.ajustement = avantAjust + delta;
+  // Si le plancher absorbe la baisse, on annule l'ajustement plutôt que de mentir.
+  const c1 = cibleJour();
+  if(delta < 0 && c1 && c1.mode === "plancher"){
+    state.ajustement = avantAjust;
+    texte = "Plancher de sécurité atteint : la cible ne descend pas plus bas.";
+  }
+  return {texte, delta, parSemaine};
+}
+
 /* Seuil « léger » : 600 kcal par portion et par repas. Un dîner à ce niveau
    laisse de la marge sur la journée sans tomber dans la portion de misère.
    Les protéines départagent ensuite : à calories égales, elles rassasient. */
@@ -1536,7 +1711,7 @@ function eligible(){
   return RECIPES.filter(r =>
     allowByDiet.includes(r.tag) &&
     !r.al.some(a => state.allerg.has(a)) &&
-    (!state.leger || r.kcal <= LEGER_KCAL)
+    (!state.leger || r.kcal <= Math.max(plafondRepas("midi"), plafondRepas("soir")))
   );
 }
 
@@ -1562,7 +1737,13 @@ function buildMenu(){
     // On évite de répéter un plat, et de servir trois fois la même famille.
     const enPromo = r => r.ing.some(x => promoFor(x[0], state.store));
     // À calories contenues, on privilégie ce qui tient au corps.
-    if(state.leger) wanted = wanted.slice().sort((a, b) => b.prot - a.prot);
+    if(state.leger){
+      // Chaque créneau a son propre plafond : le midi est plus serré que le soir.
+      const plafond = plafondRepas(slot.meal);
+      const tenables = wanted.filter(r => r.kcal <= plafond);
+      if(tenables.length >= 2) wanted = tenables;
+      wanted = wanted.slice().sort((a, b) => b.prot - a.prot);
+    }
     let choice =
       shuffle(wanted).find(r => enPromo(r) && !used.includes(r) && (tagCount[r.tag] || 0) < 2) ||
       shuffle(wanted).find(r => !used.includes(r) && (tagCount[r.tag] || 0) < 2) ||
@@ -1580,7 +1761,14 @@ function buildMenu(){
   while(total(plan) > budget() && guard++ < 60){
     const idx = plan.reduce((best, e, i) =>
       recipeCost(e.r) > recipeCost(plan[best].r) ? i : best, 0);
-    const slotPool = plan[idx].meal === "midi" && midiPool.length >= 2 ? midiPool : pool;
+    let slotPool = plan[idx].meal === "midi" && midiPool.length >= 2 ? midiPool : pool;
+    // Le rabotage du budget ne doit pas réintroduire un plat au-dessus du
+    // plafond calorique du créneau : c'est par là que le dhal atterrissait au midi.
+    if(state.leger){
+      const plafond = plafondRepas(plan[idx].meal);
+      const tenables = slotPool.filter(r => r.kcal <= plafond);
+      if(tenables.length) slotPool = tenables;
+    }
     const inPlan = plan.map(e => e.r);
     const cheaper = slotPool
       .filter(r => !inPlan.includes(r))
@@ -1928,6 +2116,7 @@ function renderProfile(){
 
   renderMagasin();
   renderLeger();
+  renderSuivi();
   renderCompte();
   renderPromos();
   renderRealPanel();
@@ -2207,6 +2396,7 @@ function renderLeger(){
 }
 $("#legerToggle").addEventListener("click", () => {
   state.leger = !state.leger;
+  sauverSuivi();
   if(state.leger && eligible().length < 3){
     state.leger = false;
     toast("Tes autres filtres ne laissent pas assez de repas légers.");
@@ -2217,6 +2407,154 @@ $("#legerToggle").addEventListener("click", () => {
   toast(state.leger
     ? "Repas légers activés. Regénère ta semaine pour l'appliquer."
     : "Retour à tous les repas.");
+});
+
+/* ============ suivi du poids ============ */
+const SUIVI_LS = "budgeat.suivi";
+function sauverSuivi(){
+  try{ localStorage.setItem(SUIVI_LS, JSON.stringify({
+    profil:state.profil, poids:state.poids, ajustement:state.ajustement,
+    refAjust:state.refAjust, leger:state.leger
+  })); }catch(e){}
+}
+function lireSuivi(){
+  try{
+    const d = JSON.parse(localStorage.getItem(SUIVI_LS) || "null");
+    if(d){
+      state.profil = d.profil || null;
+      state.poids = d.poids || [];
+      state.ajustement = d.ajustement || 0;
+      state.refAjust = d.refAjust || null;
+      if(typeof d.leger === "boolean") state.leger = d.leger;
+    }
+  }catch(e){}
+}
+
+function renderSuivi(){
+  $("#poidsCard").hidden = !state.leger;
+  $("#peseeCard").hidden = !(state.leger && state.profil);
+
+  const sel = $("#pActivite");
+  if(!sel.options.length){
+    ACTIVITES.forEach(a => {
+      const o = el("option");
+      o.value = a.k; o.textContent = a.l + " — " + a.d;
+      sel.appendChild(o);
+    });
+  }
+  const p = state.profil;
+  if(p){
+    $("#sexeH").setAttribute("aria-pressed", String(p.sexe !== "f"));
+    $("#sexeF").setAttribute("aria-pressed", String(p.sexe === "f"));
+    if(!$("#pAge").value) $("#pAge").value = p.age || "";
+    if(!$("#pTaille").value) $("#pTaille").value = p.taille || "";
+    if(!$("#pPoids").value) $("#pPoids").value = p.poids || "";
+    if(!$("#pObjectif").value) $("#pObjectif").value = p.objectif || "";
+    sel.value = p.activite || "sedentaire";
+  }
+
+  const box = $("#imcBox");
+  if(!p || !p.poids || !p.taille){ box.hidden = true; renderPesees(); return; }
+  box.hidden = false;
+
+  const v = imc(p.poids, p.taille);
+  const cat = categorieIMC(v);
+  $("#imcVal").textContent = v.toFixed(1);
+  $("#imcCat").textContent = cat.l;
+  $("#imcCat").className = "pill " + (cat.alerte ? "coral" : v < 25 ? "mint" : "sun");
+  // Échelle lisible : 15 à 40 couvre tout ce qui nous intéresse.
+  $("#imcMeter").style.width = Math.max(2, Math.min(100, (v - 15) / 25 * 100)) + "%";
+  $("#imcMeter").parentElement.classList.toggle("over", cat.alerte || v >= 30);
+
+  const c = cibleJour();
+  if(!c){ $("#cibleTxt").textContent = "Complète âge, taille et poids."; return; }
+  const mb = metabolismeBase(p), tdee = besoinTotal(p);
+  $("#cibleTxt").textContent =
+    c.mode === "maintien"
+      ? "Cible : " + c.kcal + " kcal/jour, en maintien (" + c.raison + "). Aucun déficit proposé."
+      : "Cible : " + c.kcal + " kcal/jour · métabolisme de base " + mb +
+        " · besoin total " + tdee +
+        (c.mode === "plancher" ? " · borné par le plancher de sécurité" : " · déficit de " + (tdee - c.kcal) + " kcal");
+  $("#cibleTxt").style.color = c.mode === "maintien" ? "var(--coral)" : "var(--muted)";
+  $("#plafondTxt").textContent =
+    "Répartition : midi " + plafondRepas("midi") + " kcal, soir " + plafondRepas("soir") +
+    " kcal. Le reste de la journée n'est pas planifié par l'app.";
+  renderPesees();
+}
+
+function renderPesees(){
+  const h = $("#peseeHist");
+  if(!h) return;
+  h.textContent = "";
+  if(!state.poids.length) return;
+  const recent = state.poids.slice(-6).reverse();
+  recent.forEach((w, i) => {
+    const prec = recent[i + 1];
+    const d = prec ? w.kg - prec.kg : null;
+    const l = el("div", "promoline");
+    l.innerHTML =
+      '<span class="nm tnum">' + w.kg.toFixed(1) + ' kg</span>' +
+      '<span class="qt" style="font-size:12px;color:var(--faint);font-weight:700">' +
+        new Date(w.date).toLocaleDateString("fr-FR", {day:"numeric", month:"short"}) + '</span>' +
+      (d === null ? '' :
+        '<span class="tnum" style="font-weight:800;font-size:13px;color:' +
+        (d < 0 ? "var(--green-ink)" : "var(--coral)") + '">' +
+        (d > 0 ? "+" : "") + d.toFixed(1) + ' kg</span>');
+    h.appendChild(l);
+  });
+}
+
+function lireFormulaire(){
+  const nb = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : 0; };
+  return {
+    sexe: $("#sexeF").getAttribute("aria-pressed") === "true" ? "f" : "h",
+    age: nb("#pAge"), taille: nb("#pTaille"),
+    poids: nb("#pPoids"), objectif: nb("#pObjectif"),
+    activite: $("#pActivite").value || "sedentaire"
+  };
+}
+
+$("#sexeH").addEventListener("click", () => {
+  $("#sexeH").setAttribute("aria-pressed", "true");
+  $("#sexeF").setAttribute("aria-pressed", "false");
+});
+$("#sexeF").addEventListener("click", () => {
+  $("#sexeF").setAttribute("aria-pressed", "true");
+  $("#sexeH").setAttribute("aria-pressed", "false");
+});
+
+$("#pCalculer").addEventListener("click", () => {
+  const p = lireFormulaire();
+  if(!p.age || !p.taille || !p.poids){ toast("Il me faut l'âge, la taille et le poids."); return; }
+  if(p.taille < 120 || p.taille > 230){ toast("Taille en centimètres, entre 120 et 230."); return; }
+  state.profil = p;
+  if(!state.poids.length){
+    const d = new Date().toISOString();
+    state.poids = [{date:d, kg:p.poids}];
+    state.refAjust = d;
+  }
+  sauverSuivi();
+  renderAll();
+
+  const v = imc(p.poids, p.taille);
+  if(v < 18.5){
+    toast("IMC sous 18,5 : aucun déficit proposé, la cible reste au maintien.");
+  } else if(p.objectif && imc(p.objectif, p.taille) < 18.5){
+    toast("Ton objectif te mettrait sous un IMC de 18,5. Vise plus haut.");
+  } else {
+    toast("Cible calculée. Regénère ta semaine pour l'appliquer.");
+  }
+});
+
+$("#peseeAdd").addEventListener("click", () => {
+  const kg = parseFloat($("#peseeKg").value);
+  if(!isFinite(kg) || kg < 35 || kg > 300){ toast("Un poids entre 35 et 300 kg."); return; }
+  state.poids.push({date:new Date().toISOString(), kg});
+  $("#peseeKg").value = "";
+  const r = reajuster();
+  sauverSuivi();
+  renderAll();
+  toast(r.texte);
 });
 
 /* ============ compte ============ */
@@ -2240,10 +2578,7 @@ $("#acctOut").addEventListener("click", () => {
   try{ localStorage.removeItem(LS); }catch(e){}
   auth.user = null; auth.token = null; auth.mode = supaPret() ? "supabase" : "local";
   auth.inscription = true;
-  lirePrix();
-lireMagasin();
-majEcranPorte();
-if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
+  majEcranPorte();
   const g = $("#gate");
   g.hidden = false; g.classList.remove("out");
   toast("Déconnecté.");
@@ -2854,10 +3189,7 @@ function ouvrirApp(){
 
 $("#gSwitch").addEventListener("click", () => {
   auth.inscription = !auth.inscription;
-  lirePrix();
-lireMagasin();
-majEcranPorte();
-if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
+  majEcranPorte();
 });
 
 $("#gSubmit").addEventListener("click", async () => {
@@ -2940,9 +3272,10 @@ clock();
 setInterval(clock, 20000);
 
 /* ============ démarrage ============ */
-state.menu = buildMenu().menu;
 lirePrix();
 lireMagasin();
+lireSuivi();
+state.menu = buildMenu().menu;
 majEcranPorte();
 if(state.realOn){ loadRealPrices().then(r => { if(!r.ok){ state.realOn = false; state.real = {}; } renderAll(); }); }
 if(lireSession()){ $("#gate").hidden = true; }
