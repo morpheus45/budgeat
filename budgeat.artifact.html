@@ -805,6 +805,21 @@ input[type=range]::-moz-range-thumb{
             <button class="opt" id="legerToggle" type="button" aria-pressed="false" style="width:92px;flex:none">Activer</button>
           </div>
           <div id="legerDetail" style="font-size:12px;color:var(--faint);font-weight:700"></div>
+
+          <div id="legerOptions" hidden style="display:flex;flex-direction:column;gap:12px;padding-top:4px;border-top:1px solid var(--line)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:800;font-size:14px">Gros mangeur</div>
+                <div style="font-size:12px;color:var(--faint);font-weight:700">Le plus de volume possible à calories égales</div>
+              </div>
+              <button class="opt" id="rassToggle" type="button" aria-pressed="false" style="width:92px;flex:none">Activer</button>
+            </div>
+            <div>
+              <div style="font-weight:800;font-size:14px;margin-bottom:7px">Rythme de perte</div>
+              <div class="grid2" id="rythmeOpts" style="grid-template-columns:repeat(3,1fr)"></div>
+              <div style="font-size:12px;color:var(--faint);font-weight:700;margin-top:7px" id="rythmeNote"></div>
+            </div>
+          </div>
         </div>
 
         <div class="card field" id="poidsCard" hidden>
@@ -957,7 +972,7 @@ const R = {FL:"Fruits & légumes", BO:"Boucherie", PO:"Poissonnerie", CR:"Crème
 const RAYON_ORDER = [R.FL, R.BO, R.PO, R.CR, R.PA, R.ES, R.SU];
 
 const RECIPES = [
-  {id:"dhal", kcal:848, prot:26, express:true, n:"Dhal de lentilles corail", e:"🥣", tag:"vegan", al:[], ing:[
+  {id:"dhal", fib:10, g:450, kcal:848, prot:26, express:true, n:"Dhal de lentilles corail", e:"🥣", tag:"vegan", al:[], ing:[
     ["Lentilles corail", R.ES, "400 g", 2.80],
     ["Lait de coco", R.ES, "400 ml", 1.80],
     ["Riz basmati", R.ES, "300 g", 2.30],
@@ -965,7 +980,7 @@ const RECIPES = [
     ["Tomates concassées", R.ES, "400 g", 1.15],
     ["Ail & épices curry", R.FL, "1 lot", 0.90]]},
 
-  {id:"soupe", kcal:566, prot:20, express:true, n:"Soupe de légumes & croque au fromage", e:"🥪", tag:"vege", al:["gluten","lactose"], ing:[
+  {id:"soupe", fib:12, g:563, kcal:566, prot:20, express:true, n:"Soupe de légumes & croque au fromage", e:"🥪", tag:"vege", al:["gluten","lactose"], ing:[
     ["Poireaux", R.FL, "3 pièces", 2.60],
     ["Carottes", R.FL, "500 g", 1.05],
     ["Pommes de terre", R.FL, "600 g", 1.19],
@@ -973,7 +988,7 @@ const RECIPES = [
     ["Emmental râpé", R.CR, "200 g", 2.60],
     ["Tomates", R.FL, "3 pièces", 1.80]]},
 
-  {id:"omelette", kcal:597, prot:24, express:true, n:"Omelette, pommes de terre & salade", e:"🍳", tag:"vege", al:["oeuf","lactose"], ing:[
+  {id:"omelette", fib:6, g:535, kcal:597, prot:24, express:true, n:"Omelette, pommes de terre & salade", e:"🍳", tag:"vege", al:["oeuf","lactose"], ing:[
     ["Œufs", R.CR, "12 pièces", 4.50],
     ["Pommes de terre", R.FL, "800 g", 1.59],
     ["Salade verte", R.FL, "1 pièce", 1.30],
@@ -981,7 +996,7 @@ const RECIPES = [
     ["Crème fraîche", R.CR, "20 cl", 1.35],
     ["Huile & vinaigre", R.ES, "1 lot", 0.90]]},
 
-  {id:"onepot", kcal:688, prot:22, express:true, n:"One-pot crémeux tomates", e:"🍝", tag:"vege", al:["gluten","lactose"], ing:[
+  {id:"onepot", fib:6, g:395, kcal:688, prot:22, express:true, n:"One-pot crémeux tomates", e:"🍝", tag:"vege", al:["gluten","lactose"], ing:[
     ["Pâtes penne", R.ES, "500 g", 1.45],
     ["Tomates cerises", R.FL, "500 g", 2.90],
     ["Crème fraîche", R.CR, "20 cl", 1.35],
@@ -989,7 +1004,7 @@ const RECIPES = [
     ["Parmesan", R.CR, "100 g", 3.20],
     ["Basilic & ail", R.FL, "1 lot", 1.30]]},
 
-  {id:"chili", kcal:658, prot:24, express:true, n:"Chili sin carne", e:"🌶️", tag:"vegan", al:[], ing:[
+  {id:"chili", fib:21, g:688, kcal:658, prot:24, express:true, n:"Chili sin carne", e:"🌶️", tag:"vegan", al:[], ing:[
     ["Haricots rouges", R.ES, "800 g", 2.60],
     ["Tomates concassées", R.ES, "800 g", 2.20],
     ["Poivrons", R.FL, "2 pièces", 2.40],
@@ -997,7 +1012,7 @@ const RECIPES = [
     ["Riz", R.ES, "300 g", 1.95],
     ["Maïs", R.ES, "300 g", 1.35]]},
 
-  {id:"curry", kcal:766, prot:25, express:true, n:"Curry coco pois chiches", e:"🍛", tag:"vegan", al:[], ing:[
+  {id:"curry", fib:18, g:563, kcal:766, prot:25, express:true, n:"Curry coco pois chiches", e:"🍛", tag:"vegan", al:[], ing:[
     ["Pois chiches", R.ES, "800 g", 2.60],
     ["Lait de coco", R.ES, "400 ml", 1.80],
     ["Épinards", R.SU, "450 g", 2.20],
@@ -1005,7 +1020,7 @@ const RECIPES = [
     ["Oignons", R.FL, "2 pièces", 0.75],
     ["Pâte de curry", R.ES, "1 pot", 2.10]]},
 
-  {id:"pizza", kcal:570, prot:21, n:"Pizza maison aux légumes", e:"🍕", tag:"vege", al:["gluten","lactose"], ing:[
+  {id:"pizza", fib:5, g:405, kcal:570, prot:21, n:"Pizza maison aux légumes", e:"🍕", tag:"vege", al:["gluten","lactose"], ing:[
     ["Pâte à pizza", R.PA, "2 pièces", 2.70],
     ["Sauce tomate", R.ES, "400 g", 1.50],
     ["Mozzarella", R.CR, "250 g", 2.45],
@@ -1013,7 +1028,7 @@ const RECIPES = [
     ["Poivron", R.FL, "1 pièce", 1.20],
     ["Olives & origan", R.ES, "1 lot", 1.80]]},
 
-  {id:"gratin", kcal:850, prot:34, n:"Gratin de pâtes au thon", e:"🧀", tag:"poisson", al:["gluten","lactose","poisson"], ing:[
+  {id:"gratin", fib:6, g:448, kcal:850, prot:34, n:"Gratin de pâtes au thon", e:"🧀", tag:"poisson", al:["gluten","lactose","poisson"], ing:[
     ["Pâtes", R.ES, "500 g", 1.45],
     ["Thon en boîte", R.ES, "3 boîtes", 4.80],
     ["Crème fraîche", R.CR, "20 cl", 1.35],
@@ -1021,7 +1036,7 @@ const RECIPES = [
     ["Tomates concassées", R.ES, "400 g", 1.15],
     ["Oignons", R.FL, "2 pièces", 0.75]]},
 
-  {id:"cantonais", kcal:612, prot:26, express:true, n:"Riz cantonais maison", e:"🍚", tag:"viande", al:["oeuf","soja"], ing:[
+  {id:"cantonais", fib:8, g:388, kcal:612, prot:26, express:true, n:"Riz cantonais maison", e:"🍚", tag:"viande", al:["oeuf","soja"], ing:[
     ["Riz", R.ES, "400 g", 2.60],
     ["Jambon blanc", R.BO, "4 tranches", 3.10],
     ["Œufs", R.CR, "6 pièces", 2.40],
@@ -1029,21 +1044,21 @@ const RECIPES = [
     ["Oignons nouveaux", R.FL, "1 botte", 1.40],
     ["Sauce soja", R.ES, "1 flacon", 2.10]]},
 
-  {id:"tacos", kcal:800, prot:33, express:true, n:"Tacos express", e:"🌮", tag:"viande", al:["gluten","lactose"], ing:[
+  {id:"tacos", fib:4, g:363, kcal:800, prot:33, express:true, n:"Tacos express", e:"🌮", tag:"viande", al:["gluten","lactose"], ing:[
     ["Galettes de blé", R.PA, "8 pièces", 2.40],
     ["Viande hachée", R.BO, "500 g", 7.50],
     ["Cheddar", R.CR, "150 g", 2.50],
     ["Salade & tomates", R.FL, "1 lot", 2.60],
     ["Épices tacos", R.ES, "1 sachet", 1.10]]},
 
-  {id:"poulet", kcal:694, prot:45, n:"Poulet rôti citron & thym", e:"🍗", tag:"viande", al:[], ing:[
+  {id:"poulet", fib:9, g:650, kcal:694, prot:45, n:"Poulet rôti citron & thym", e:"🍗", tag:"viande", al:[], ing:[
     ["Poulet fermier", R.BO, "1,3 kg", 12.50],
     ["Pommes de terre", R.FL, "1 kg", 1.99],
     ["Citrons", R.FL, "2 pièces", 0.85],
     ["Thym & ail", R.FL, "1 lot", 1.30],
     ["Carottes", R.FL, "500 g", 1.05]]},
 
-  {id:"boulettes", kcal:888, prot:38, n:"Boulettes de bœuf & purée", e:"🥔", tag:"viande", al:["gluten","lactose","oeuf"], ing:[
+  {id:"boulettes", fib:9, g:700, kcal:888, prot:38, n:"Boulettes de bœuf & purée", e:"🥔", tag:"viande", al:["gluten","lactose","oeuf"], ing:[
     ["Bœuf haché", R.BO, "600 g", 9.60],
     ["Pommes de terre", R.FL, "1 kg", 1.99],
     ["Lait", R.CR, "50 cl", 0.62],
@@ -1051,33 +1066,33 @@ const RECIPES = [
     ["Chapelure & œuf", R.ES, "1 lot", 1.60],
     ["Haricots verts", R.SU, "500 g", 2.50]]},
 
-  {id:"saumon", kcal:572, prot:30, express:true, n:"Saumon, riz & brocolis", e:"🐟", tag:"poisson", al:["poisson"], ing:[
+  {id:"saumon", fib:6, g:400, kcal:572, prot:30, express:true, n:"Saumon, riz & brocolis", e:"🐟", tag:"poisson", al:["poisson"], ing:[
     ["Pavés de saumon", R.PO, "4 pièces", 14.00],
     ["Riz", R.ES, "300 g", 1.95],
     ["Brocolis", R.FL, "700 g", 3.15],
     ["Citron & aneth", R.FL, "1 lot", 1.30]]},
 
-  {id:"cabillaud", kcal:536, prot:32, n:"Cabillaud, écrasé de pommes de terre", e:"🐠", tag:"poisson", al:["poisson","lactose"], ing:[
+  {id:"cabillaud", fib:8, g:538, kcal:536, prot:32, n:"Cabillaud, écrasé de pommes de terre", e:"🐠", tag:"poisson", al:["poisson","lactose"], ing:[
     ["Dos de cabillaud", R.PO, "600 g", 15.60],
     ["Pommes de terre", R.FL, "1 kg", 1.99],
     ["Beurre", R.CR, "100 g", 1.15],
     ["Épinards", R.SU, "450 g", 2.20]]},
 
-  {id:"wok", kcal:449, prot:14, express:true, n:"Wok de nouilles & légumes croquants", e:"🍜", tag:"vegan", al:["gluten","soja"], ing:[
+  {id:"wok", fib:9, g:383, kcal:449, prot:14, express:true, n:"Wok de nouilles & légumes croquants", e:"🍜", tag:"vegan", al:["gluten","soja"], ing:[
     ["Nouilles chinoises", R.ES, "400 g", 2.30],
     ["Carottes", R.FL, "400 g", 0.84],
     ["Poivrons", R.FL, "2 pièces", 2.40],
     ["Brocolis", R.FL, "400 g", 1.80],
     ["Sauce soja & gingembre", R.ES, "1 lot", 2.30]]},
 
-  {id:"bowl", kcal:642, prot:22, express:true, n:"Buddha bowl quinoa & pois chiches rôtis", e:"🥗", tag:"vegan", al:[], ing:[
+  {id:"bowl", fib:17, g:415, kcal:642, prot:22, express:true, n:"Buddha bowl quinoa & pois chiches rôtis", e:"🥗", tag:"vegan", al:[], ing:[
     ["Quinoa", R.ES, "300 g", 3.60],
     ["Pois chiches", R.ES, "400 g", 1.40],
     ["Patate douce", R.FL, "600 g", 2.37],
     ["Salade & tomates", R.FL, "1 lot", 2.60],
     ["Tahin & citron", R.ES, "1 lot", 2.60]]},
 
-  {id:"thai", kcal:589, prot:8, express:true, n:"Soupe thaï coco & vermicelles", e:"🥥", tag:"vegan", al:["soja"], ing:[
+  {id:"thai", fib:2, g:375, kcal:589, prot:8, express:true, n:"Soupe thaï coco & vermicelles", e:"🥥", tag:"vegan", al:["soja"], ing:[
     ["Lait de coco", R.ES, "800 ml", 3.60],
     ["Vermicelles de riz", R.ES, "200 g", 1.75],
     ["Champignons", R.FL, "250 g", 2.74],
@@ -1176,6 +1191,8 @@ const state = {
   slots:{},
   // Repas légers : plafond calorique par portion, priorité aux protéines.
   leger:false,
+  rassasiant:false,     // gros mangeur : priorité au volume et à la satiété
+  rythme:"reguliere",   // douceur du déficit
   // { sexe, age, taille (cm), poids (kg), objectif (kg), activite }
   profil:null,
   poids:[],          // pesées : [{date, kg}]
@@ -1578,6 +1595,21 @@ const storeSubtitle = name => state.menu.length ? eur(weekAt(name)) : "—";
    métabolisme de base, jamais sous 1500 kcal (homme) ou 1200 (femme), et
    aucun déficit proposé sous un IMC de 18,5. */
 
+/* Trois rythmes de perte. Le déficit théorique est borné par le plancher de
+   sécurité, donc le rythme réellement obtenu est souvent plus doux que celui
+   affiché — l'app montre le déficit effectif, pas celui qu'on a demandé. */
+const RYTHMES = [
+  {k:"douce",     l:"Douce",     deficit:300, kg:"~0,3 kg/sem"},
+  {k:"reguliere", l:"Régulière", deficit:500, kg:"~0,5 kg/sem"},
+  {k:"soutenue",  l:"Soutenue",  deficit:750, kg:"~0,75 kg/sem"}
+];
+const rythmeActuel = () => RYTHMES.find(r => r.k === state.rythme) || RYTHMES[1];
+
+/* Rassasiement : protéines et fibres rapportées à 100 kcal. C'est ce rapport,
+   pas les calories seules, qui fait qu'un plat tient au corps. Le poids dans
+   l'assiette compte autant pour un gros mangeur. */
+const scoreSatiete = r => (r.prot + 1.5 * (r.fib || 0)) / (r.kcal / 100);
+
 const ACTIVITES = [
   {k:"sedentaire", l:"Sédentaire",  f:1.20, d:"bureau, peu de marche"},
   {k:"leger",      l:"Peu actif",   f:1.375, d:"marche, 1 à 2 séances"},
@@ -1625,7 +1657,7 @@ function cibleJour(){
   if(p.objectif && p.poids <= p.objectif) return {kcal:tdee, mode:"maintien", raison:"objectif atteint"};
 
   const plancher = plancherKcal(p);
-  const vise = tdee - 500 + (state.ajustement || 0);
+  const vise = tdee - rythmeActuel().deficit + (state.ajustement || 0);
   if(vise < plancher) return {kcal:plancher, mode:"plancher", raison:"déficit borné par le plancher de sécurité"};
   return {kcal:Math.round(vise), mode:"deficit", raison:null};
 }
@@ -1742,7 +1774,10 @@ function buildMenu(){
       const plafond = plafondRepas(slot.meal);
       const tenables = wanted.filter(r => r.kcal <= plafond);
       if(tenables.length >= 2) wanted = tenables;
-      wanted = wanted.slice().sort((a, b) => b.prot - a.prot);
+      // Gros mangeur : ce qui remplit l'assiette d'abord. Sinon, les protéines.
+      wanted = state.rassasiant
+        ? wanted.slice().sort((a, b) => scoreSatiete(b) - scoreSatiete(a) || b.g - a.g)
+        : wanted.slice().sort((a, b) => b.prot - a.prot);
     }
     let choice =
       shuffle(wanted).find(r => enPromo(r) && !used.includes(r) && (tagCount[r.tag] || 0) < 2) ||
@@ -1770,9 +1805,14 @@ function buildMenu(){
       if(tenables.length) slotPool = tenables;
     }
     const inPlan = plan.map(e => e.r);
-    const cheaper = slotPool
-      .filter(r => !inPlan.includes(r))
-      .sort((a, b) => recipeCost(a) - recipeCost(b))[0];
+    const candidats = slotPool.filter(r => !inPlan.includes(r));
+    // En mode gros mangeur, on garde le plus rassasiant PARMI les moins chers,
+    // sinon la contrainte de budget évince justement les plats qui remplissent.
+    const cheaper = state.rassasiant
+      ? candidats
+          .filter(r => recipeCost(r) < recipeCost(plan[idx].r))
+          .sort((a, b) => scoreSatiete(b) - scoreSatiete(a) || b.g - a.g)[0]
+      : candidats.sort((a, b) => recipeCost(a) - recipeCost(b))[0];
     if(!cheaper || recipeCost(cheaper) >= recipeCost(plan[idx].r)) break;
     plan[idx] = {day:plan[idx].day, meal:plan[idx].meal, r:cheaper};
   }
@@ -1918,6 +1958,7 @@ function renderMenu(){
         '<span class="pill ' + tagClass + '">' + tagLabel + '</span>' +
         '<span class="pill tnum">' + perPers + ' € / pers</span>' +
         (state.leger ? '<span class="pill mint tnum">' + r.kcal + ' kcal</span>' : '') +
+        (state.leger ? '<span class="pill sun tnum">' + r.g + ' g / assiette</span>' : '') +
       '</div></div>';
     const b = el("button", "swap");
     b.setAttribute("aria-label", "Remplacer " + r.n + ", " + dayOf(entry.day).n + " " + entry.meal);
@@ -2361,10 +2402,56 @@ function ouvrirCorrection(it){
 }
 
 /* ============ repas légers ============ */
+function renderRythme(){
+  const host = $("#rythmeOpts");
+  host.textContent = "";
+  RYTHMES.forEach(r => {
+    const b = el("button", "opt");
+    b.type = "button";
+    b.textContent = r.l;
+    b.setAttribute("aria-pressed", String(r.k === state.rythme));
+    b.addEventListener("click", () => {
+      state.rythme = r.k;
+      sauverSuivi();
+      renderAll();
+      toast("Rythme " + r.l.toLowerCase() + ". Regénère ta semaine.");
+    });
+    host.appendChild(b);
+  });
+
+  const c = cibleJour();
+  const r = rythmeActuel();
+  if(!c){ $("#rythmeNote").textContent = "Vise " + r.kg + ". Complète ta fiche pour la cible."; return; }
+
+  if(c.mode === "maintien"){
+    $("#rythmeNote").textContent = "Aucun déficit appliqué (" + c.raison + ").";
+    return;
+  }
+  // Le déficit réellement obtenu, une fois le plancher passé par là.
+  const reel = besoinTotal(state.profil) - c.kcal;
+  const kgSem = (reel * 7 / 7700).toFixed(2).replace(".", ",");
+  $("#rythmeNote").textContent = reel < r.deficit - 20
+    ? "Demandé " + r.deficit + " kcal, appliqué " + reel + " : le plancher de sécurité limite à " +
+      kgSem + " kg/sem."
+    : "Déficit de " + reel + " kcal, soit environ " + kgSem + " kg par semaine.";
+
+  const p = state.profil;
+  if(p && state.rythme === "soutenue" && imc(p.poids, p.taille) < 25){
+    $("#rythmeNote").textContent +=
+      " À corpulence normale, un rythme soutenu se tient rarement longtemps.";
+  }
+}
+
 function renderLeger(){
   const b = $("#legerToggle");
   b.setAttribute("aria-pressed", String(state.leger));
   b.textContent = state.leger ? "Activé" : "Activer";
+
+  $("#legerOptions").hidden = !state.leger;
+  const rb = $("#rassToggle");
+  rb.setAttribute("aria-pressed", String(state.rassasiant));
+  rb.textContent = state.rassasiant ? "Activé" : "Activer";
+  if(state.leger) renderRythme();
 
   const dispo = eligible().length;
   if(!state.leger){
@@ -2386,14 +2473,27 @@ function renderLeger(){
   // Léger et protéiné coûte cher : poisson et viande maigre sont les premiers
   // que la contrainte de budget écarte. Autant le dire que le taire.
   const maigre = prot < 20;
+  const grammes = Math.round(plan.reduce((a, e) => a + e.r.g, 0) / plan.length);
+  const fibres = Math.round(plan.reduce((a, e) => a + (e.r.fib || 0), 0) / plan.length);
   $("#legerDetail").textContent =
     moyRepas + " kcal par repas, " + moyJour + " kcal par jour planifié, " +
     prot + " g de protéines par repas." +
+    " " + grammes + " g dans l'assiette" +
+    (state.rassasiant ? " et " + fibres + " g de fibres" : "") + " par repas." +
     (maigre
       ? " C'est peu pour tenir jusqu'au repas suivant : les plats légers et protéinés (poisson, blanc de volaille) sont les premiers que ton budget écarte. Monte-le de quelques euros pour les retrouver."
       : " De quoi tenir jusqu'au repas suivant.");
   $("#legerDetail").style.color = maigre ? "var(--coral)" : "var(--faint)";
 }
+$("#rassToggle").addEventListener("click", () => {
+  state.rassasiant = !state.rassasiant;
+  sauverSuivi();
+  renderAll();
+  toast(state.rassasiant
+    ? "Gros mangeur activé. Regénère ta semaine."
+    : "Retour au tri par protéines.");
+});
+
 $("#legerToggle").addEventListener("click", () => {
   state.leger = !state.leger;
   sauverSuivi();
@@ -2414,7 +2514,8 @@ const SUIVI_LS = "budgeat.suivi";
 function sauverSuivi(){
   try{ localStorage.setItem(SUIVI_LS, JSON.stringify({
     profil:state.profil, poids:state.poids, ajustement:state.ajustement,
-    refAjust:state.refAjust, leger:state.leger
+    refAjust:state.refAjust, leger:state.leger,
+    rassasiant:state.rassasiant, rythme:state.rythme
   })); }catch(e){}
 }
 function lireSuivi(){
@@ -2425,6 +2526,8 @@ function lireSuivi(){
       state.poids = d.poids || [];
       state.ajustement = d.ajustement || 0;
       state.refAjust = d.refAjust || null;
+      if(typeof d.rassasiant === "boolean") state.rassasiant = d.rassasiant;
+      if(d.rythme) state.rythme = d.rythme;
       if(typeof d.leger === "boolean") state.leger = d.leger;
     }
   }catch(e){}
@@ -2478,7 +2581,8 @@ function renderSuivi(){
   $("#cibleTxt").style.color = c.mode === "maintien" ? "var(--coral)" : "var(--muted)";
   $("#plafondTxt").textContent =
     "Répartition : midi " + plafondRepas("midi") + " kcal, soir " + plafondRepas("soir") +
-    " kcal. Le reste de la journée n'est pas planifié par l'app.";
+    " kcal. Chaque repas affiche le poids à servir pour tenir dans ce plafond. " +
+    "Le reste de la journée n'est pas planifié par l'app.";
   renderPesees();
 }
 
